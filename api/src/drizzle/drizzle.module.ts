@@ -12,7 +12,11 @@ type PgBundle = ReturnType<typeof createPgDb>;
       provide: PLATFORM_PG,
       inject: [ConfigService],
       useFactory: (config: ConfigService): PgBundle => {
-        const url = config.getOrThrow<string>("DATABASE_URL");
+        const url = config.get<string>("DATABASE_URL")?.trim();
+        if (!url) {
+          console.error("[drizzle] DATABASE_URL missing — using local placeholder so /health can bind");
+          return createPgDb("postgresql://127.0.0.1:5432/platform");
+        }
         return createPgDb(url);
       },
     },

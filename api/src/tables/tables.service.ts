@@ -52,12 +52,10 @@ const DEFAULT_FLOOR: { section: string; tables: { number: string; seats: number 
 export class TablesService implements OnModuleInit {
   constructor(@Inject(DRIZZLE) private readonly db: PlatformPgDb) {}
 
-  async onModuleInit(): Promise<void> {
-    try {
-      await this.seedDefaultFloor();
-    } catch {
+  onModuleInit(): void {
+    void this.seedDefaultFloor().catch(() => {
       /* schema may not be ready yet */
-    }
+    });
   }
 
   async getBranchFloor(organizationId: string, branchCode: string) {

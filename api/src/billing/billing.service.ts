@@ -52,14 +52,12 @@ export class BillingService implements OnApplicationBootstrap {
     private readonly taxAuthority: TaxAuthorityService,
   ) {}
 
-  async onApplicationBootstrap(): Promise<void> {
-    try {
-      await this.seedSampleBillsIfEmpty();
-    } catch (err) {
+  onApplicationBootstrap(): void {
+    void this.seedSampleBillsIfEmpty().catch((err) => {
       this.logger.warn(
         `Bill seed skipped: ${err instanceof Error ? err.message : String(err)}`,
       );
-    }
+    });
   }
 
   private async seedSampleBillsIfEmpty(): Promise<void> {

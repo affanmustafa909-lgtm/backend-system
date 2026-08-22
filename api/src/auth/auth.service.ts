@@ -1,4 +1,4 @@
-import { Inject, Injectable, InternalServerErrorException, OnModuleInit, UnauthorizedException } from "@nestjs/common";
+import { Inject, Injectable, InternalServerErrorException, Logger, OnModuleInit, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
@@ -29,6 +29,8 @@ import { PLATFORM_SENTINEL_ORG_ID, type AccessJwtPayload } from "./jwt.types";
 
 @Injectable()
 export class AuthService implements OnModuleInit {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @Inject(DRIZZLE) private readonly db: PlatformPgDb,
     private readonly jwt: JwtService,
@@ -36,8 +38,11 @@ export class AuthService implements OnModuleInit {
     private readonly security: SecurityService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
-    await this.seedIfEmpty();
+  onModuleInit(): void {
+    // Nest runs this before listen() — never await DB seed or Railway /health fails.
+    void this.seedIfEmpty().catch((err) => {
+      this.logger.warn(`Auth seed skipped: ${err instanceof Error ? err.message : err}`);
+    });
   }
 
   async seedIfEmpty(): Promise<void> {

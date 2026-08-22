@@ -122,17 +122,17 @@ export class UsersService implements OnApplicationBootstrap {
     private readonly delivery: DeliveryService,
   ) {}
 
-  async onApplicationBootstrap(): Promise<void> {
-    try {
+  onApplicationBootstrap(): void {
+    void (async () => {
       await this.upgradeOwnerPermissions();
       await this.upgradeRiderPermissions();
       await this.seedStaffIfMissing();
       await this.upgradeStaffPins();
-    } catch (err) {
+    })().catch((err) => {
       this.logger.warn(
         `User bootstrap skipped — run pnpm db:push if the schema changed: ${err instanceof Error ? err.message : err}`,
       );
-    }
+    });
   }
 
   async upgradeOwnerPermissions(): Promise<void> {

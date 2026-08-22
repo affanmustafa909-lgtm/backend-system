@@ -83,8 +83,8 @@ export class HrService implements OnModuleInit {
     private readonly accounting: AccountingService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
-    try {
+  onModuleInit(): void {
+    void (async () => {
       await this.db.execute(sql`
         ALTER TABLE pops_payroll_runs
         ADD COLUMN IF NOT EXISTS paid_at timestamptz
@@ -106,11 +106,11 @@ export class HrService implements OnModuleInit {
         ADD COLUMN IF NOT EXISTS expense_id uuid
       `);
       await this.seedDefaultBranch();
-    } catch (err) {
+    })().catch((err) => {
       this.logger.warn(
         `HR bootstrap skipped — run pnpm db:push if the schema changed: ${err instanceof Error ? err.message : err}`,
       );
-    }
+    });
   }
 
   async getDashboard(organizationId: string, branchCode: string) {

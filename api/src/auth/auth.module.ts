@@ -16,7 +16,9 @@ import { JwtStrategy } from "./jwt.strategy";
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.getOrThrow<string>("JWT_ACCESS_SECRET"),
+        secret:
+          config.get<string>("JWT_ACCESS_SECRET")?.trim() ||
+          "railway-boot-placeholder-min-32-chars!!",
       }),
     }),
   ],

@@ -78,12 +78,10 @@ const DEFAULT_MENU: {
 export class MenuService implements OnModuleInit {
   constructor(@Inject(DRIZZLE) private readonly db: PlatformPgDb) {}
 
-  async onModuleInit(): Promise<void> {
-    try {
-      await this.seedDefaultMenus();
-    } catch {
+  onModuleInit(): void {
+    void this.seedDefaultMenus().catch(() => {
       /* schema may not be ready yet */
-    }
+    });
   }
 
   async seedDefaultMenus(): Promise<void> {

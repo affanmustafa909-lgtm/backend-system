@@ -67,14 +67,12 @@ export class NotificationsService implements OnApplicationBootstrap {
 
   constructor(@Inject(DRIZZLE) private readonly db: PlatformPgDb) {}
 
-  async onApplicationBootstrap(): Promise<void> {
-    try {
-      await this.seedIfEmpty();
-    } catch (err) {
+  onApplicationBootstrap(): void {
+    void this.seedIfEmpty().catch((err) => {
       this.logger.warn(
         `Notification seed skipped: ${err instanceof Error ? err.message : String(err)}`,
       );
-    }
+    });
   }
 
   async getOverview(organizationId: string) {

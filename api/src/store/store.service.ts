@@ -99,15 +99,15 @@ export class StoreService implements OnModuleInit {
     private readonly taxAuthority: TaxAuthorityService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
-    try {
+  onModuleInit(): void {
+    void (async () => {
       await this.ensureStoreSchema();
       await this.seedAllBranches();
-    } catch (err) {
+    })().catch((err) => {
       this.logger.warn(
         `Store bootstrap skipped — run pnpm db:push if schema changed: ${err instanceof Error ? err.message : err}`,
       );
-    }
+    });
   }
 
   /** Idempotent ALTERs so Railway DBs catch up without a full drizzle push. */

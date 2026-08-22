@@ -163,14 +163,12 @@ export class PharmacyService implements OnModuleInit {
     private readonly taxAuthority: TaxAuthorityService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
-    try {
-      await this.seedAllBranches();
-    } catch (err) {
+  onModuleInit(): void {
+    void this.seedAllBranches().catch((err) => {
       this.logger.warn(
         `Pharmacy bootstrap skipped — run pnpm db:push if schema changed: ${err instanceof Error ? err.message : err}`,
       );
-    }
+    });
   }
 
   private async resolveBranch(organizationId: string, branchCode: string) {

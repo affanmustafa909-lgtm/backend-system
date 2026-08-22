@@ -99,12 +99,10 @@ export class InventoryService implements OnModuleInit {
     private readonly accountingHooks: AccountingHooksService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
-    try {
-      await this.seedAllBranches();
-    } catch {
+  onModuleInit(): void {
+    void this.seedAllBranches().catch(() => {
       /* schema may not be ready */
-    }
+    });
   }
 
   async seedAllBranches(): Promise<void> {

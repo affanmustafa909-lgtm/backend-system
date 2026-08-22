@@ -38,14 +38,12 @@ export class DeliveryService implements OnApplicationBootstrap {
     private readonly notifications: NotificationsService,
   ) {}
 
-  async onApplicationBootstrap(): Promise<void> {
-    try {
-      await this.seedRiderProfileIfMissing();
-    } catch (err) {
+  onApplicationBootstrap(): void {
+    void this.seedRiderProfileIfMissing().catch((err) => {
       this.logger.warn(
         `Delivery rider bootstrap skipped — run pnpm db:push if the schema changed: ${err instanceof Error ? err.message : err}`,
       );
-    }
+    });
   }
 
   async seedRiderProfileIfMissing(): Promise<void> {

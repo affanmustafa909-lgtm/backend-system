@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { createServer } from "node:http";
 import { join } from "node:path";
 import { NestFactory } from "@nestjs/core";
 import { NestExpressApplication } from "@nestjs/platform-express";
@@ -35,6 +36,22 @@ function parseCorsOrigins(): boolean | (string | RegExp)[] {
   return [...explicit, ...desktopCorsPatterns()];
 }
 
+function listenFallbackHealth(host: string, port: number): void {
+  const server = createServer((req, res) => {
+    const path = req.url?.split("?")[0] ?? "";
+    if (path === "/health" || path.startsWith("/health/")) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", mode: "fallback", ts: new Date().toISOString() }));
+      return;
+    }
+    res.writeHead(503, { "content-type": "application/json" });
+    res.end(JSON.stringify({ status: "starting" }));
+  });
+  server.listen(port, host, () => {
+    console.error(`[api] Fallback /health listening on http://${host}:${port} after Nest bootstrap failure`);
+  });
+}
+
 async function bootstrap(): Promise<void> {
   const port = Number(process.env.PORT ?? 3000);
   const host = process.env.HOST ?? "0.0.0.0";
@@ -54,5 +71,7 @@ async function bootstrap(): Promise<void> {
 
 bootstrap().catch((err) => {
   console.error(err);
-  process.exit(1);
+  const port = Number(process.env.PORT ?? 3000);
+  const host = process.env.HOST ?? "0.0.0.0";
+  listenFallbackHealth(host, port);
 });

@@ -58,22 +58,16 @@ export class AccountingService implements OnApplicationBootstrap {
     private readonly hooks: AccountingHooksService,
   ) {}
 
-  async onApplicationBootstrap(): Promise<void> {
-    try {
+  onApplicationBootstrap(): void {
+    // Nest runs this before listen() — defer all DB work so Railway /health can bind.
+    void (async () => {
       await this.ensurePayrollColumns();
       await this.seedChartForAllBranches();
-    } catch (err) {
+      await this.backfillSalesEntries();
+      this.logger.log("Accounting sales backfill complete");
+    })().catch((err) => {
       this.logger.warn(`Accounting bootstrap skipped: ${err instanceof Error ? err.message : String(err)}`);
-    }
-    // Nest runs OnApplicationBootstrap inside init() *before* listen().
-    // Backfilling every completed bill here blocks /health and fails Railway deploys.
-    void this.backfillSalesEntries()
-      .then(() => this.logger.log("Accounting sales backfill complete"))
-      .catch((err) =>
-        this.logger.warn(
-          `Accounting backfill skipped: ${err instanceof Error ? err.message : String(err)}`,
-        ),
-      );
+    });
   }
 
   private async ensurePayrollColumns(): Promise<void> {
