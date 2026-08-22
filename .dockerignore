@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+.git
+.turbo
+**/.turbo
+**/dist
+.env
+.env.*
+!.env.example
+api/data/uploads/*
+!api/data/uploads/.gitkeep
+*.md
+!README.md
+!RAILWAY.md

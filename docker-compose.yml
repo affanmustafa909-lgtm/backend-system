@@ -1,0 +1,75 @@
+# Backend API + PostgreSQL (self-host / local Docker)
+#
+# Live hosted API (Railway):
+#   https://backend-desktop-production-5505.up.railway.app
+#   Health: https://backend-desktop-production-5505.up.railway.app/health
+#
+# Build context is this folder (backend-system/), not the monorepo root.
+# From this folder:
+#   docker compose --env-file .env.docker up -d --build
+#
+# Image Dockerfile: ./Dockerfile (same as Railway with Root Directory = backend-system)
+
+name: platform-backend
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-platform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-platform}
+      POSTGRES_DB: ${POSTGRES_DB:-platform}
+    ports:
+      - "${POSTGRES_HOST_PORT:-15432}:5432"
+    volumes:
+      - platform_pg_backend:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-platform} -d ${POSTGRES_DB:-platform}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: platform-api:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: ${PORT:-3000}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://platform:platform@postgres:5432/platform}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-me-min-32-chars-long}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL_DAYS: ${JWT_REFRESH_TTL_DAYS:-30}
+      SEED_USER_EMAIL: ${SEED_USER_EMAIL:-admin@platform.local}
+      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-changeme-please-01}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://127.0.0.1:1420,tauri://localhost}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://127.0.0.1:3000}
+      # Live Railway (reference only — this compose runs your own API container):
+      # LIVE_API_URL=https://backend-desktop-production-5505.up.railway.app
+    ports:
+      - "${API_HOST_PORT:-3000}:3000"
+    volumes:
+      - api_uploads:/app/api/data/uploads
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+volumes:
+  platform_pg_backend: {}
+  api_uploads: {}
