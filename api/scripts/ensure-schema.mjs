@@ -413,13 +413,24 @@ export function ensureCriticalSchema() {
   const runner = `
 const { Client } = require("pg");
 const statements = ${JSON.stringify(STATEMENTS)};
+function stripSsl(raw) {
+  try {
+    const url = new URL(raw);
+    url.searchParams.delete("sslmode");
+    url.searchParams.delete("ssl");
+    url.searchParams.delete("uselibpqcompat");
+    return url.toString();
+  } catch {
+    return raw;
+  }
+}
 (async () => {
+  const raw = process.env.DATABASE_URL || "";
+  const local = /localhost|127\\.0\\.0\\.1/.test(raw);
   const client = new Client({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: stripSsl(raw),
     connectionTimeoutMillis: 10_000,
-    ssl: /railway|rlwy\\.app|amazonaws|neon\\.tech/i.test(process.env.DATABASE_URL || "")
-      ? { rejectUnauthorized: false }
-      : undefined,
+    ssl: local ? false : { rejectUnauthorized: false },
   });
   await client.connect();
   for (const sql of statements) {
