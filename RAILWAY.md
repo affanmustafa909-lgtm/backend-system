@@ -2,8 +2,8 @@
 
 Host the NestJS API (`backend-system/api`) on [Railway](https://railway.com) with a managed PostgreSQL database.
 
-**Live API:** https://backend-desktop-production-5505.up.railway.app  
-**Health:** https://backend-desktop-production-5505.up.railway.app/health
+**Live API:** https://backend-system-production-28a3.up.railway.app  
+**Health:** https://backend-system-production-28a3.up.railway.app/health
 
 Quick checklist: **[RAILWAY-FIX.md](./RAILWAY-FIX.md)**
 
@@ -96,7 +96,7 @@ SSL to Postgres is enabled automatically in production (see `packages/database-p
 ### 6. Generate a public URL
 
 1. API service → **Settings** → **Networking** → **Generate Domain**
-2. You get a URL like `https://backend-desktop-production-5505.up.railway.app`
+2. You get a URL like `https://backend-system-production-28a3.up.railway.app`
 
 ### 7. Seed the live database (first deploy)
 
@@ -186,7 +186,7 @@ To keep uploads across deploys:
 ```
 Railway Project
 ├── PostgreSQL          → DATABASE_URL (auto)
-└── API (Docker)        → https://backend-desktop-production-5505.up.railway.app
+└── API (Docker)        → https://backend-system-production-28a3.up.railway.app
          ↑
     Web / Desktop / Mobile clients (VITE_API_BASE_URL)
 ```

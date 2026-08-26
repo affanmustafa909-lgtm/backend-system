@@ -1,8 +1,8 @@
 # Standalone Railway image — build from backend-system/ (Root Directory = backend-system).
 #
 # Live hosted API:
-#   https://backend-desktop-production-5505.up.railway.app
-#   Health: https://backend-desktop-production-5505.up.railway.app/health
+#   https://backend-system-production-28a3.up.railway.app
+#   Health: https://backend-system-production-28a3.up.railway.app/health
 #
 #   docker build -f Dockerfile -t platform-api .
 #

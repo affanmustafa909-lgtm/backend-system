@@ -66,5 +66,5 @@ cp backend/.env.docker.example backend/.env.docker
 docker compose -f backend/docker-compose.yml --env-file backend/.env.docker up -d --build
 ```
 
-**Live Railway API:** https://backend-desktop-production-5505.up.railway.app  
-Health: https://backend-desktop-production-5505.up.railway.app/health
+**Live Railway API:** https://backend-system-production-28a3.up.railway.app  
+Health: https://backend-system-production-28a3.up.railway.app/health

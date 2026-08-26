@@ -2,7 +2,7 @@
 
 Use the full guide: **[RAILWAY.md](./RAILWAY.md)**
 
-Live API: https://backend-desktop-production-5505.up.railway.app
+Live API: https://backend-system-production-28a3.up.railway.app
 
 ## Required Railway settings
 
@@ -20,12 +20,12 @@ GitHub repo for this service: **`basir2353/backend-system`** (standalone — Roo
 If `/health` returns **502 Application failed to respond** but deploy logs show `Listening on http://0.0.0.0:8080`, the domain is pointing at the wrong port:
 
 ```bash
-railway domain update backend-desktop-production-5505.up.railway.app --port 8080
+railway domain update backend-system-production-28a3.up.railway.app --port 8080
 ```
 
 ## After push to GitHub (or `railway up` from this folder)
 
 1. Railway → your API service → **Redeploy** (if using GitHub auto-deploy)
-2. Verify: `curl https://backend-desktop-production-5505.up.railway.app/health`
-3. Verify DB: `curl https://backend-desktop-production-5505.up.railway.app/health/db`
+2. Verify: `curl https://backend-system-production-28a3.up.railway.app/health`
+3. Verify DB: `curl https://backend-system-production-28a3.up.railway.app/health/db`
 4. Test login: `admin@platform.local` / `changeme-please-01`
