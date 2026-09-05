@@ -68,3 +68,6 @@ docker compose -f backend/docker-compose.yml --env-file backend/.env.docker up -
 
 **Live Railway API:** https://backend-system-production-28a3.up.railway.app  
 Health: https://backend-system-production-28a3.up.railway.app/health
+
+Ice Cream Bar desktop auto-update (separate repo): https://github.com/affanmustafa909-lgtm/ice-cream-bar-updates  
+App source: https://github.com/affanmustafa909-lgtm/Universal-application-system-
