@@ -8,7 +8,7 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
-watchPatterns = ["api/**", "packages/**", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "turbo.json"]
+watchPatterns = ["api/**", "packages/**", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "turbo.json", "railway.json", "railway.toml"]
 
 [deploy]
 startCommand = "node /app/api/scripts/start-railway.mjs"

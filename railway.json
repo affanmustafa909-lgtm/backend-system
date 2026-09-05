@@ -9,7 +9,9 @@
       "package.json",
       "pnpm-lock.yaml",
       "pnpm-workspace.yaml",
-      "turbo.json"
+      "turbo.json",
+      "railway.json",
+      "railway.toml"
     ]
   },
   "deploy": {
