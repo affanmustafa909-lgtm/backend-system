@@ -145,15 +145,15 @@ export class AuthService implements OnModuleInit {
       },
     ];
 
-    // Also keep legacy restaurant admin email mapped to restaurant demo.
-    const legacyRestaurantAdmin = "admin@platform.local";
-
     for (const biz of systemBusinesses) {
       await this.ensureDemoBusiness({
         ...biz,
         passwordHash,
         adminPerms,
-        alsoBindEmail: biz.systemType === "restaurant" ? legacyRestaurantAdmin : undefined,
+        alsoBindEmails:
+          biz.systemType === "restaurant"
+            ? ["admin@platform.local", "restaurant@pops.demo"]
+            : undefined,
       });
     }
 
@@ -189,7 +189,7 @@ export class AuthService implements OnModuleInit {
     city: string;
     passwordHash: string;
     adminPerms: string[];
-    alsoBindEmail?: string;
+    alsoBindEmails?: string[];
   }): Promise<void> {
     const adminEmail = input.adminEmail.trim().toLowerCase();
     // Dedicated demo org only — never pick the first active business of this type
@@ -303,8 +303,11 @@ export class AuthService implements OnModuleInit {
     };
 
     await ensureOwner(adminEmail, input.adminName);
-    if (input.alsoBindEmail && input.alsoBindEmail !== adminEmail) {
-      await ensureOwner(input.alsoBindEmail.trim().toLowerCase(), "Restaurant Admin");
+    for (const extra of input.alsoBindEmails ?? []) {
+      const email = extra.trim().toLowerCase();
+      if (email && email !== adminEmail) {
+        await ensureOwner(email, "Restaurant Admin");
+      }
     }
 
     const branch = await this.db
@@ -324,6 +327,23 @@ export class AuthService implements OnModuleInit {
 
   async login(email: string, password: string) {
     const normalizedEmail = email.trim().toLowerCase();
+    try {
+      return await this.loginInner(normalizedEmail, password);
+    } catch (err) {
+      if (err instanceof UnauthorizedException || err instanceof InternalServerErrorException) {
+        throw err;
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/does not exist|relation/i.test(msg)) {
+        throw new InternalServerErrorException(
+          "Database is still setting up. Wait a minute and try again.",
+        );
+      }
+      throw err;
+    }
+  }
+
+  private async loginInner(normalizedEmail: string, password: string) {
     const row = await this.db
       .select({
         id: users.id,

@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { bootstrapLiveDb } from "./bootstrap-live-db.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const apiRoot = join(scriptDir, "..");
@@ -15,9 +16,10 @@ function warnIfMissing(name) {
 warnIfMissing("DATABASE_URL");
 warnIfMissing("JWT_ACCESS_SECRET");
 
-// Schema/seed used to run here and blocked Railway /health for the full retry window.
-// Nest now listens first; seed + schema patches run after listen inside the API.
-console.warn("[railway] Starting API immediately (schema/seed deferred until after /health).");
+// Empty Railway Postgres has no tables — login then 500s. Create schema before listen
+// when `users` is missing. Later deploys skip the full push (healthcheck stays fast).
+console.warn("[railway] Checking live database schema…");
+bootstrapLiveDb();
 
 mkdirSync(join(apiRoot, "data", "uploads"), { recursive: true });
 console.log("[railway] Starting API server…");
