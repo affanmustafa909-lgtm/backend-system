@@ -46,8 +46,11 @@ export class AuthService implements OnModuleInit {
   }
 
   async seedIfEmpty(): Promise<void> {
-    const password = this.config.get<string>("SEED_USER_PASSWORD") ?? "changeme-please-01";
+    const password = this.config.get<string>("SEED_USER_PASSWORD") ?? "Owner@12345";
     const passwordHash = await bcrypt.hash(password, 12);
+    const superPassword =
+      this.config.get<string>("SEED_SUPER_ADMIN_PASSWORD") ?? password;
+    const superPasswordHash = await bcrypt.hash(superPassword, 12);
     const adminPerms = permissionsForPopsRole("admin");
 
     const primarySuper =
@@ -73,7 +76,8 @@ export class AuthService implements OnModuleInit {
         await this.db.insert(users).values({
           email,
           name: sa.name,
-          passwordHash,
+          passwordHash: superPasswordHash,
+          lastSetPassword: superPassword,
           platformRole: "super_admin",
           status: "active",
         });
@@ -105,6 +109,15 @@ export class AuthService implements OnModuleInit {
         adminName: "Restaurant Owner",
         branchCode: "REST-HQ",
         branchName: "Restaurant HQ",
+        city: "Islamabad",
+      },
+      {
+        systemType: "ice_cream",
+        name: "POPS Demo Ice Cream",
+        adminEmail: "admin.icecream@pops.demo",
+        adminName: "Ice Cream Owner",
+        branchCode: "SCOOP-HQ",
+        branchName: "Ice Cream Bar",
         city: "Islamabad",
       },
       {

@@ -7,6 +7,7 @@ import { popsRoleSchema } from "./users";
  */
 export const SYSTEM_TYPES = [
   "restaurant",
+  "ice_cream",
   "pharmacy",
   "general_store",
   "grocery",
@@ -18,20 +19,36 @@ export type SystemType = z.infer<typeof systemTypeSchema>;
 
 export const SYSTEM_TYPE_LABELS: Record<SystemType, string> = {
   restaurant: "Restaurant POS",
+  ice_cream: "Ice Cream POS",
   pharmacy: "Pharmacy POS",
   general_store: "General Store POS",
   grocery: "Grocery POS",
   retail: "Retail POS",
 };
 
+/** Restaurant POS APIs also serve Ice Cream Bar tenants. */
+export const RESTAURANT_FAMILY_SYSTEM_TYPES = ["restaurant", "ice_cream"] as const;
+
+export function isRestaurantFamilySystemType(systemType: string | null | undefined): boolean {
+  return systemType === "restaurant" || systemType === "ice_cream";
+}
+
+export function systemTypeLabel(systemType: string | null | undefined): string {
+  if (!systemType) return "—";
+  const parsed = systemTypeSchema.safeParse(systemType);
+  return parsed.success ? SYSTEM_TYPE_LABELS[parsed.data] : systemType;
+}
+
 /** Frontend edition / route IDs use hyphens; DB / JWT use underscores. */
 export function systemTypeToFrontendId(systemType: SystemType): string {
   if (systemType === "general_store") return "general-store";
+  if (systemType === "ice_cream") return "ice-cream-bar";
   return systemType;
 }
 
 export function frontendIdToSystemType(id: string): SystemType | null {
   if (id === "general-store") return "general_store";
+  if (id === "ice-cream-bar" || id === "ice-cream") return "ice_cream";
   const parsed = systemTypeSchema.safeParse(id);
   return parsed.success ? parsed.data : null;
 }

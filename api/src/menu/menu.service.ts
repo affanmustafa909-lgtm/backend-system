@@ -14,6 +14,7 @@ import type {
   UpdateMenuItem,
 } from "@platform/contracts";
 import {
+  organizations,
   popsBranches,
   popsMenuCategories,
   popsMenuItemVariants,
@@ -145,9 +146,22 @@ export class MenuService implements OnModuleInit {
   async seedDefaultMenus(): Promise<void> {
     const branches = await this.db.select().from(popsBranches);
     for (const branch of branches) {
-      await this.seedBranchMenuIfEmpty(branch);
-      await this.seedIceCreamMenuIfMissing(branch);
+      const systemType = await this.organizationSystemType(branch.organizationId);
+      if (systemType === "ice_cream") {
+        await this.seedIceCreamMenuIfMissing(branch);
+      } else if (systemType === "restaurant") {
+        await this.seedBranchMenuIfEmpty(branch);
+      }
     }
+  }
+
+  private async organizationSystemType(organizationId: string): Promise<string> {
+    const [org] = await this.db
+      .select({ systemType: organizations.systemType })
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+      .limit(1);
+    return org?.systemType ?? "restaurant";
   }
 
   private async seedBranchMenuIfEmpty(branch: typeof popsBranches.$inferSelect): Promise<void> {
@@ -198,7 +212,7 @@ export class MenuService implements OnModuleInit {
     }
   }
 
-  /** Ice Cream Bar EXE shares restaurant orgs — seed parlour menu with photos. */
+  /** Ice Cream Bar tenants get parlour categories with photos. */
   private async seedIceCreamMenuIfMissing(branch: typeof popsBranches.$inferSelect): Promise<void> {
     for (const block of ICE_CREAM_MENU) {
       const existingCat = await this.db
@@ -271,8 +285,12 @@ export class MenuService implements OnModuleInit {
 
   async getBranchMenu(organizationId: string, branchCode: string) {
     const branch = await this.resolveBranch(organizationId, branchCode);
-    await this.seedBranchMenuIfEmpty(branch);
-    await this.seedIceCreamMenuIfMissing(branch);
+    const systemType = await this.organizationSystemType(organizationId);
+    if (systemType === "ice_cream") {
+      await this.seedIceCreamMenuIfMissing(branch);
+    } else {
+      await this.seedBranchMenuIfEmpty(branch);
+    }
 
     const categories = await this.db
       .select()
@@ -296,8 +314,12 @@ export class MenuService implements OnModuleInit {
 
   async getBranchMenuAdmin(organizationId: string, branchCode: string) {
     const branch = await this.resolveBranch(organizationId, branchCode);
-    await this.seedBranchMenuIfEmpty(branch);
-    await this.seedIceCreamMenuIfMissing(branch);
+    const systemType = await this.organizationSystemType(organizationId);
+    if (systemType === "ice_cream") {
+      await this.seedIceCreamMenuIfMissing(branch);
+    } else {
+      await this.seedBranchMenuIfEmpty(branch);
+    }
 
     const categories = await this.db
       .select()

@@ -1,6 +1,6 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import type { SystemType } from "@platform/contracts";
+import { isRestaurantFamilySystemType, type SystemType } from "@platform/contracts";
 import { isSuperAdmin, type AccessJwtPayload } from "../auth/jwt.types";
 import { REQUIRED_SYSTEM_TYPE_KEY } from "./require-system-type.decorator";
 
@@ -36,7 +36,7 @@ export class SystemTypeGuard implements CanActivate {
       throw new ForbiddenException("Access denied. No system assignment on this account.");
     }
 
-    if (!required.includes(user.systemType)) {
+    if (!systemTypeAllowed(user.systemType, required)) {
       throw new ForbiddenException(
         `Access denied. This account is restricted to the ${user.systemType} system.`,
       );
@@ -44,4 +44,11 @@ export class SystemTypeGuard implements CanActivate {
 
     return true;
   }
+}
+
+function systemTypeAllowed(userType: SystemType, required: SystemType[]): boolean {
+  if (required.includes(userType)) return true;
+  return (
+    isRestaurantFamilySystemType(userType) && required.some((type) => isRestaurantFamilySystemType(type))
+  );
 }
