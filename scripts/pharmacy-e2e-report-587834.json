@@ -1,0 +1,109 @@
+{
+  "API": "http://127.0.0.1:3000",
+  "EMAIL": "admin.pharmacy@pops.demo",
+  "BRANCH": "PHAR-HQ",
+  "passed": 20,
+  "failed": 0,
+  "results": [
+    {
+      "name": "0. health/login",
+      "ok": true,
+      "detail": "token ok"
+    },
+    {
+      "name": "1. dashboard",
+      "ok": true,
+      "detail": "kpis=54"
+    },
+    {
+      "name": "2. medicines list (+seed)",
+      "ok": true,
+      "detail": "count=5 first=MED-002"
+    },
+    {
+      "name": "3. company master",
+      "ok": true,
+      "detail": "COM-E2E-587834"
+    },
+    {
+      "name": "4. warehouse",
+      "ok": true,
+      "detail": "existing=MAIN"
+    },
+    {
+      "name": "5. geo territory→city→area(outstation)→route(PJP)",
+      "ok": true,
+      "detail": "outstation=true pjp=1"
+    },
+    {
+      "name": "6. trade customer + ledger",
+      "ok": true,
+      "detail": "aging keys=d0_30,d31_60,d61_plus"
+    },
+    {
+      "name": "7. doctor + prefs + commission rule",
+      "ok": true,
+      "detail": "doctor=DOC-E2E-587834"
+    },
+    {
+      "name": "8. patient",
+      "ok": true,
+      "detail": "PAT-E2E-587834"
+    },
+    {
+      "name": "9. prescription → verify → dispense",
+      "ok": true,
+      "detail": "RX-619162"
+    },
+    {
+      "name": "10. POS sale with Rx (commission accrue)",
+      "ok": true,
+      "detail": "sale=INV-635565 commissionRows=2"
+    },
+    {
+      "name": "11. code lookup",
+      "ok": true,
+      "detail": "hits=1"
+    },
+    {
+      "name": "12. purchase PO → approve → GRN",
+      "ok": true,
+      "detail": "GRN-12659107"
+    },
+    {
+      "name": "13. scheme + dist book → approve → invoice",
+      "ok": true,
+      "detail": "order=DO-12671219 freeQty=1 status=booked inv=WINV-12675335"
+    },
+    {
+      "name": "14. delivery + collection",
+      "ok": true,
+      "detail": "DLV-12682066 / COL-12684317"
+    },
+    {
+      "name": "15. wholesale return",
+      "ok": true,
+      "detail": "WRN-12686936"
+    },
+    {
+      "name": "16. retail sale return",
+      "ok": true,
+      "detail": "SRN-12694702"
+    },
+    {
+      "name": "17. field force employees + assignment + visit",
+      "ok": true,
+      "detail": "emp=E102 outstation=true"
+    },
+    {
+      "name": "18. pricing list + doctors enriched list",
+      "ok": true,
+      "detail": "pl=PL-701748 referred=1860 commission=93"
+    },
+    {
+      "name": "19. shifts / batches / barcode",
+      "ok": true,
+      "detail": "batches=9 shiftsStatus=200"
+    }
+  ]
+}

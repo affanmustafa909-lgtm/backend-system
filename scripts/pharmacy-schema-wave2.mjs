@@ -19,6 +19,7 @@ if (!dbUrl) {
 const stmts = [
   `ALTER TABLE pharmacy_patients ADD COLUMN IF NOT EXISTS code text`,
   `ALTER TABLE pharmacy_doctors ADD COLUMN IF NOT EXISTS code text`,
+  `ALTER TABLE pharmacy_doctors ADD COLUMN IF NOT EXISTS registration_number text`,
   `ALTER TABLE pharmacy_routes ADD COLUMN IF NOT EXISTS sequence_no integer NOT NULL DEFAULT 0`,
   `ALTER TABLE pharmacy_routes ADD COLUMN IF NOT EXISTS pjp_day_of_week integer`,
   `ALTER TABLE pharmacy_visits ADD COLUMN IF NOT EXISTS is_outstation boolean NOT NULL DEFAULT false`,
