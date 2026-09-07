@@ -270,3 +270,66 @@ export const pharmacyRefillReminders = pgTable("pharmacy_refill_reminders", {
   sentAt: timestamp("sent_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Doctor preferred / recommended medicines for POS suggestions. */
+export const pharmacyDoctorRecommendations = pgTable("pharmacy_doctor_recommendations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  doctorId: uuid("doctor_id")
+    .notNull()
+    .references(() => pharmacyDoctors.id, { onDelete: "cascade" }),
+  medicineId: uuid("medicine_id")
+    .notNull()
+    .references(() => pharmacyMedicines.id, { onDelete: "cascade" }),
+  priority: integer("priority").notNull().default(1),
+  notes: text("notes"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Commission rule: percent or fixed PKR on Rx-linked retail sales. */
+export const pharmacyDoctorCommissionRules = pgTable("pharmacy_doctor_commission_rules", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  doctorId: uuid("doctor_id")
+    .notNull()
+    .references(() => pharmacyDoctors.id, { onDelete: "cascade" }),
+  medicineId: uuid("medicine_id").references(() => pharmacyMedicines.id, { onDelete: "cascade" }),
+  companyId: uuid("company_id"),
+  ruleType: text("rule_type").notNull().default("percent"),
+  rateValue: integer("rate_value").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Immutable commission ledger rows per sale line. */
+export const pharmacyDoctorCommissionEntries = pgTable("pharmacy_doctor_commission_entries", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id")
+    .notNull()
+    .references(() => popsBranches.id, { onDelete: "cascade" }),
+  doctorId: uuid("doctor_id")
+    .notNull()
+    .references(() => pharmacyDoctors.id, { onDelete: "cascade" }),
+  saleId: uuid("sale_id")
+    .notNull()
+    .references(() => pharmacySales.id, { onDelete: "cascade" }),
+  saleLineId: uuid("sale_line_id").references(() => pharmacySaleLines.id, { onDelete: "set null" }),
+  medicineId: uuid("medicine_id").references(() => pharmacyMedicines.id, { onDelete: "set null" }),
+  basePkr: integer("base_pkr").notNull().default(0),
+  rateValue: integer("rate_value").notNull().default(0),
+  ruleType: text("rule_type").notNull().default("percent"),
+  amountPkr: integer("amount_pkr").notNull().default(0),
+  status: text("status").notNull().default("accrued"),
+  notes: text("notes"),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

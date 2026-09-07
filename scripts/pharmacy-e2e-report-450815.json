@@ -1,0 +1,109 @@
+{
+  "API": "http://127.0.0.1:3000",
+  "EMAIL": "admin.pharmacy@pops.demo",
+  "BRANCH": "PHAR-HQ",
+  "passed": 13,
+  "failed": 7,
+  "results": [
+    {
+      "name": "0. health/login",
+      "ok": true,
+      "detail": "token ok"
+    },
+    {
+      "name": "1. dashboard",
+      "ok": true,
+      "detail": "kpis=54"
+    },
+    {
+      "name": "2. medicines list (+seed)",
+      "ok": true,
+      "detail": "count=5 first=MED-002"
+    },
+    {
+      "name": "3. company master",
+      "ok": true,
+      "detail": "COM-E2E-450815"
+    },
+    {
+      "name": "4. warehouse",
+      "ok": true,
+      "detail": "existing=MAIN"
+    },
+    {
+      "name": "5. geo territory→city→area(outstation)→route(PJP)",
+      "ok": true,
+      "detail": "outstation=true pjp=1"
+    },
+    {
+      "name": "6. trade customer + ledger",
+      "ok": true,
+      "detail": "aging keys=d0_30,d31_60,d61_plus"
+    },
+    {
+      "name": "7. doctor + prefs + commission rule",
+      "ok": false,
+      "detail": "doctor: Internal server error"
+    },
+    {
+      "name": "8. patient",
+      "ok": true,
+      "detail": "PAT-E2E-450815"
+    },
+    {
+      "name": "9. prescription → verify → dispense",
+      "ok": false,
+      "detail": "create rx: Internal server error"
+    },
+    {
+      "name": "10. POS sale with Rx (commission accrue)",
+      "ok": false,
+      "detail": "sale: Internal server error"
+    },
+    {
+      "name": "11. code lookup",
+      "ok": false,
+      "detail": "lookup: Internal server error"
+    },
+    {
+      "name": "12. purchase PO → approve → GRN",
+      "ok": true,
+      "detail": "GRN-12486893"
+    },
+    {
+      "name": "13. scheme + dist book → approve → invoice",
+      "ok": true,
+      "detail": "order=DO-12498473 freeQty=1 status=booked inv=WINV-12502590"
+    },
+    {
+      "name": "14. delivery + collection",
+      "ok": true,
+      "detail": "DLV-12509309 / COL-12511563"
+    },
+    {
+      "name": "15. wholesale return",
+      "ok": true,
+      "detail": "WRN-12514166"
+    },
+    {
+      "name": "16. retail sale return",
+      "ok": false,
+      "detail": "no sale lines for return"
+    },
+    {
+      "name": "17. field force employees + assignment + visit",
+      "ok": false,
+      "detail": "assignment: Internal server error"
+    },
+    {
+      "name": "18. pricing list + doctors enriched list",
+      "ok": false,
+      "detail": "doctors: Internal server error"
+    },
+    {
+      "name": "19. shifts / batches / barcode",
+      "ok": true,
+      "detail": "batches=7 shiftsStatus=200"
+    }
+  ]
+}

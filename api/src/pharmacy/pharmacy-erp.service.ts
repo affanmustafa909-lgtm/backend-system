@@ -49,7 +49,10 @@ import {
   pharmacyTradeCustomers,
   pharmacyVisits,
   pharmacyWarehouses,
+  pharmacyWholesaleReturnLines,
+  pharmacyWholesaleReturns,
   popsBranches,
+  popsEmployees,
   type PlatformPgDb,
 } from "@platform/database-pg";
 import { AccountingHooksService } from "../accounting/accounting-hooks.service";
@@ -475,7 +478,14 @@ export class PharmacyErpService {
 
   async createRoute(
     organizationId: string,
-    input: { areaId: string; code: string; name: string; station?: string },
+    input: {
+      areaId: string;
+      code: string;
+      name: string;
+      station?: string;
+      sequenceNo?: number;
+      pjpDayOfWeek?: number | null;
+    },
   ) {
     if (!input.areaId || !input.code?.trim() || !input.name?.trim()) {
       throw new BadRequestException("areaId, code and name are required");
@@ -488,6 +498,11 @@ export class PharmacyErpService {
         code: input.code.trim(),
         name: input.name.trim(),
         station: input.station ?? null,
+        sequenceNo: Math.round(input.sequenceNo ?? 0),
+        pjpDayOfWeek:
+          input.pjpDayOfWeek === undefined || input.pjpDayOfWeek === null
+            ? null
+            : Math.max(0, Math.min(6, Math.round(input.pjpDayOfWeek))),
       })
       .returning();
     if (!row) throw new BadRequestException("Failed to create route");
@@ -539,6 +554,62 @@ export class PharmacyErpService {
       .returning();
     if (!row) throw new BadRequestException("Failed to create trade customer");
     return row;
+  }
+
+  async getTradeCustomerLedger(organizationId: string, customerId: string) {
+    const [customer] = await this.db
+      .select()
+      .from(pharmacyTradeCustomers)
+      .where(
+        and(eq(pharmacyTradeCustomers.id, customerId), eq(pharmacyTradeCustomers.organizationId, organizationId)),
+      )
+      .limit(1);
+    if (!customer) throw new NotFoundException("Trade customer not found");
+
+    const invoices = await this.db
+      .select()
+      .from(pharmacyDistInvoices)
+      .where(
+        and(
+          eq(pharmacyDistInvoices.organizationId, organizationId),
+          eq(pharmacyDistInvoices.tradeCustomerId, customerId),
+        ),
+      )
+      .orderBy(desc(pharmacyDistInvoices.createdAt))
+      .limit(200);
+
+    const collections = await this.db
+      .select()
+      .from(pharmacyCollections)
+      .where(
+        and(
+          eq(pharmacyCollections.organizationId, organizationId),
+          eq(pharmacyCollections.tradeCustomerId, customerId),
+        ),
+      )
+      .orderBy(desc(pharmacyCollections.createdAt))
+      .limit(200);
+
+    const now = Date.now();
+    const aging = { d0_30: 0, d31_60: 0, d61_plus: 0 };
+    for (const inv of invoices) {
+      const due = inv.amountDuePkr ?? 0;
+      if (due <= 0) continue;
+      const ageDays = Math.floor((now - new Date(inv.createdAt).getTime()) / 86400000);
+      if (ageDays <= 30) aging.d0_30 += due;
+      else if (ageDays <= 60) aging.d31_60 += due;
+      else aging.d61_plus += due;
+    }
+
+    return {
+      customer,
+      invoices,
+      collections,
+      aging,
+      outstandingPkr: customer.outstandingPkr,
+      creditLimitPkr: customer.creditLimitPkr,
+      overdueBlocked: customer.creditLimitPkr > 0 && customer.outstandingPkr >= customer.creditLimitPkr,
+    };
   }
 
   // ─── Sales force ─────────────────────────────────────────────────────────
@@ -1125,12 +1196,14 @@ export class PharmacyErpService {
       const unitPrice = resolved.unitPricePkr;
       const discount = Math.round(line.discountPkr ?? 0);
       const qty = Math.round(line.quantity);
+      const freeFromScheme = await this.resolveSchemeFreeQty(organizationId, line.medicineId, qty);
+      const freeQuantity = Math.round(line.freeQuantity ?? freeFromScheme);
       const lineTotal = qty * unitPrice - discount;
       subtotal += lineTotal;
       prepared.push({
         medicineId: line.medicineId,
         quantity: qty,
-        freeQuantity: Math.round(line.freeQuantity ?? 0),
+        freeQuantity,
         unitPricePkr: unitPrice,
         discountPkr: discount,
         lineTotalPkr: lineTotal,
@@ -1168,7 +1241,7 @@ export class PharmacyErpService {
         orderNumber: this.nextRef("DO"),
         tradeCustomerId: customer.id,
         salesmanEmployeeId: input.salesmanEmployeeId ?? null,
-        status: input.submit ? "submitted" : "draft",
+        status: input.submit ? "booked" : "draft",
         subtotalPkr: subtotal,
         discountPkr,
         taxPkr,
@@ -1211,7 +1284,7 @@ export class PharmacyErpService {
 
   async approveDistOrder(organizationId: string, id: string) {
     const order = await this.getDistOrder(organizationId, id);
-    if (!["draft", "submitted"].includes(order.status)) {
+    if (!["draft", "submitted", "booked"].includes(order.status)) {
       throw new BadRequestException(`Cannot approve order in status ${order.status}`);
     }
     const [customer] = await this.db
@@ -1600,6 +1673,7 @@ export class PharmacyErpService {
       purpose?: string;
       status?: string;
       productive?: boolean;
+      isOutstation?: boolean;
       orderId?: string;
       collectionId?: string;
       notes?: string;
@@ -1617,6 +1691,7 @@ export class PharmacyErpService {
         purpose: input.purpose ?? null,
         status: input.status ?? "completed",
         productive: input.productive ?? false,
+        isOutstation: input.isOutstation ?? false,
         orderId: input.orderId ?? null,
         collectionId: input.collectionId ?? null,
         notes: input.notes ?? null,
@@ -1627,11 +1702,50 @@ export class PharmacyErpService {
   }
 
   async listTargets(organizationId: string) {
-    return this.db
+    const rows = await this.db
       .select()
       .from(pharmacyTargets)
       .where(eq(pharmacyTargets.organizationId, organizationId))
       .orderBy(desc(pharmacyTargets.createdAt));
+
+    const out = [];
+    for (const t of rows) {
+      let actualSales = t.actualSalesPkr;
+      let actualCollection = t.actualCollectionPkr;
+      if (t.employeeId) {
+        const [salesAgg] = await this.db
+          .select({ total: sql<number>`coalesce(sum(${pharmacyDistInvoices.totalPkr}), 0)` })
+          .from(pharmacyDistInvoices)
+          .innerJoin(pharmacyDistOrders, eq(pharmacyDistOrders.id, pharmacyDistInvoices.orderId))
+          .where(
+            and(
+              eq(pharmacyDistInvoices.organizationId, organizationId),
+              eq(pharmacyDistOrders.salesmanEmployeeId, t.employeeId),
+              sql`${pharmacyDistInvoices.invoiceDate} >= ${t.periodStart}`,
+              sql`${pharmacyDistInvoices.invoiceDate} <= ${t.periodEnd}`,
+            ),
+          );
+        const [colAgg] = await this.db
+          .select({ total: sql<number>`coalesce(sum(${pharmacyCollections.amountPkr}), 0)` })
+          .from(pharmacyCollections)
+          .where(
+            and(
+              eq(pharmacyCollections.organizationId, organizationId),
+              eq(pharmacyCollections.salesmanEmployeeId, t.employeeId),
+              sql`${pharmacyCollections.createdAt}::date >= ${t.periodStart}`,
+              sql`${pharmacyCollections.createdAt}::date <= ${t.periodEnd}`,
+            ),
+          );
+        actualSales = Number(salesAgg?.total ?? 0);
+        actualCollection = Number(colAgg?.total ?? 0);
+      }
+      out.push({
+        ...t,
+        actualSalesPkr: actualSales,
+        actualCollectionPkr: actualCollection,
+      });
+    }
+    return out;
   }
 
   async createTarget(
@@ -1905,5 +2019,198 @@ export class PharmacyErpService {
       source: "retail_selling_price",
       priceListId: null,
     };
+  }
+
+  /** Buy X Get Y free qty from active schemes. */
+  async resolveSchemeFreeQty(organizationId: string, medicineId: string, buyQty: number): Promise<number> {
+    const qty = Math.max(0, Math.round(buyQty));
+    if (qty <= 0) return 0;
+    const [med] = await this.db
+      .select()
+      .from(pharmacyMedicines)
+      .where(and(eq(pharmacyMedicines.id, medicineId), eq(pharmacyMedicines.organizationId, organizationId)))
+      .limit(1);
+    const today = new Date().toISOString().slice(0, 10);
+    const schemes = await this.db
+      .select()
+      .from(pharmacySchemes)
+      .where(and(eq(pharmacySchemes.organizationId, organizationId), eq(pharmacySchemes.status, "active")));
+    let best = 0;
+    for (const s of schemes) {
+      if (s.startDate && s.startDate > today) continue;
+      if (s.endDate && s.endDate < today) continue;
+      if (s.medicineId && s.medicineId !== medicineId) continue;
+      if (s.companyId && med?.companyId && s.companyId !== med.companyId) continue;
+      if (s.companyId && !med?.companyId) continue;
+      if (!s.buyQty || s.buyQty <= 0 || !s.freeQty) continue;
+      const multiples = Math.floor(qty / s.buyQty);
+      if (multiples <= 0) continue;
+      best = Math.max(best, multiples * s.freeQty);
+    }
+    return best;
+  }
+
+  async listWholesaleReturns(organizationId: string, branchCode: string) {
+    const branch = await this.resolveBranch(organizationId, branchCode);
+    return this.db
+      .select()
+      .from(pharmacyWholesaleReturns)
+      .where(
+        and(
+          eq(pharmacyWholesaleReturns.organizationId, organizationId),
+          eq(pharmacyWholesaleReturns.branchId, branch.id),
+        ),
+      )
+      .orderBy(desc(pharmacyWholesaleReturns.createdAt));
+  }
+
+  async createWholesaleReturn(
+    organizationId: string,
+    input: {
+      branchCode: string;
+      tradeCustomerId: string;
+      invoiceId?: string;
+      warehouseId?: string;
+      reason?: string;
+      lines: { medicineId: string; batchId?: string; quantity: number; unitPricePkr?: number }[];
+    },
+    userId?: string,
+  ) {
+    const branch = await this.resolveBranch(organizationId, input.branchCode);
+    if (!input.tradeCustomerId || !input.lines?.length) {
+      throw new BadRequestException("tradeCustomerId and lines are required");
+    }
+    const warehouse = input.warehouseId
+      ? (
+          await this.db
+            .select()
+            .from(pharmacyWarehouses)
+            .where(eq(pharmacyWarehouses.id, input.warehouseId))
+            .limit(1)
+        )[0]
+      : await this.stock.ensureDefaultWarehouse(organizationId, branch.id);
+
+    const ret = await this.db.transaction(async (tx) => {
+      let total = 0;
+      const prepared: { medicineId: string; batchId?: string | null; quantity: number; unitPricePkr: number; lineTotalPkr: number }[] = [];
+      for (const line of input.lines) {
+        const qty = Math.round(line.quantity);
+        if (qty <= 0) continue;
+        const unit = Math.round(line.unitPricePkr ?? 0);
+        const lineTotal = qty * unit;
+        total += lineTotal;
+        prepared.push({
+          medicineId: line.medicineId,
+          batchId: line.batchId ?? null,
+          quantity: qty,
+          unitPricePkr: unit,
+          lineTotalPkr: lineTotal,
+        });
+      }
+      if (!prepared.length) throw new BadRequestException("No valid return lines");
+
+      const [created] = await tx
+        .insert(pharmacyWholesaleReturns)
+        .values({
+          organizationId,
+          branchId: branch.id,
+          returnNumber: this.nextRef("WRN"),
+          invoiceId: input.invoiceId ?? null,
+          tradeCustomerId: input.tradeCustomerId,
+          warehouseId: warehouse?.id ?? null,
+          reason: input.reason ?? null,
+          totalPkr: total,
+          status: "posted",
+          createdByUserId: userId ?? null,
+        })
+        .returning();
+      if (!created) throw new BadRequestException("Failed to create wholesale return");
+
+      for (const line of prepared) {
+        if (line.batchId) {
+          await this.stock.restoreBatch(tx, {
+            organizationId,
+            branchId: branch.id,
+            medicineId: line.medicineId,
+            batchId: line.batchId,
+            qty: line.quantity,
+            warehouseId: warehouse?.id,
+            referenceType: "wholesale_return",
+            referenceId: created.id,
+            createdByUserId: userId,
+          });
+        } else if (warehouse?.id) {
+          await this.stock.receiveBatch(tx, {
+            organizationId,
+            branchId: branch.id,
+            warehouseId: warehouse.id,
+            medicineId: line.medicineId,
+            batchNumber: `WRN-${Date.now().toString().slice(-6)}`,
+            expiryDate: new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10),
+            quantity: line.quantity,
+            purchaseRatePkr: line.unitPricePkr,
+            saleRatePkr: line.unitPricePkr,
+            referenceType: "wholesale_return",
+            referenceId: created.id,
+            createdByUserId: userId,
+          });
+        }
+        await tx.insert(pharmacyWholesaleReturnLines).values({
+          returnId: created.id,
+          medicineId: line.medicineId,
+          batchId: line.batchId ?? null,
+          quantity: line.quantity,
+          unitPricePkr: line.unitPricePkr,
+          lineTotalPkr: line.lineTotalPkr,
+        });
+      }
+
+      const [customer] = await tx
+        .select()
+        .from(pharmacyTradeCustomers)
+        .where(eq(pharmacyTradeCustomers.id, input.tradeCustomerId))
+        .limit(1);
+      if (customer) {
+        await tx
+          .update(pharmacyTradeCustomers)
+          .set({ outstandingPkr: Math.max(0, customer.outstandingPkr - total) })
+          .where(eq(pharmacyTradeCustomers.id, customer.id));
+      }
+      if (input.invoiceId) {
+        const [inv] = await tx
+          .select()
+          .from(pharmacyDistInvoices)
+          .where(eq(pharmacyDistInvoices.id, input.invoiceId))
+          .limit(1);
+        if (inv) {
+          await tx
+            .update(pharmacyDistInvoices)
+            .set({
+              amountDuePkr: Math.max(0, inv.amountDuePkr - total),
+            })
+            .where(eq(pharmacyDistInvoices.id, inv.id));
+        }
+      }
+      return created;
+    });
+
+    const lines = await this.db
+      .select()
+      .from(pharmacyWholesaleReturnLines)
+      .where(eq(pharmacyWholesaleReturnLines.returnId, ret.id));
+    return { ...ret, lines };
+  }
+
+  async listEmployeesForPicker(organizationId: string) {
+    return this.db
+      .select({
+        id: popsEmployees.id,
+        employeeCode: popsEmployees.employeeCode,
+        name: popsEmployees.displayName,
+      })
+      .from(popsEmployees)
+      .where(eq(popsEmployees.organizationId, organizationId))
+      .orderBy(popsEmployees.displayName)
+      .limit(500);
   }
 }

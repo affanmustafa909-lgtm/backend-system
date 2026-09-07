@@ -98,6 +98,10 @@ export const pharmacyRoutes = pgTable("pharmacy_routes", {
   code: text("code").notNull(),
   name: text("name").notNull(),
   station: text("station"),
+  /** Beat sequence within area (1 = first stop). */
+  sequenceNo: integer("sequence_no").notNull().default(0),
+  /** PJP day: 0=Sun … 6=Sat, or null = every day. */
+  pjpDayOfWeek: integer("pjp_day_of_week"),
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -533,6 +537,7 @@ export const pharmacyVisits = pgTable("pharmacy_visits", {
   purpose: text("purpose"),
   status: text("status").notNull().default("completed"),
   productive: boolean("productive").notNull().default(false),
+  isOutstation: boolean("is_outstation").notNull().default(false),
   orderId: uuid("order_id").references(() => pharmacyDistOrders.id, { onDelete: "set null" }),
   collectionId: uuid("collection_id").references(() => pharmacyCollections.id, { onDelete: "set null" }),
   notes: text("notes"),
@@ -619,4 +624,40 @@ export const pharmacyAuditLogs = pgTable("pharmacy_audit_logs", {
   newValueJson: text("new_value_json"),
   reason: text("reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Wholesale / distribution invoice returns (RTV from retailer). */
+export const pharmacyWholesaleReturns = pgTable("pharmacy_wholesale_returns", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id")
+    .notNull()
+    .references(() => popsBranches.id, { onDelete: "cascade" }),
+  returnNumber: text("return_number").notNull(),
+  invoiceId: uuid("invoice_id").references(() => pharmacyDistInvoices.id, { onDelete: "set null" }),
+  tradeCustomerId: uuid("trade_customer_id")
+    .notNull()
+    .references(() => pharmacyTradeCustomers.id, { onDelete: "restrict" }),
+  warehouseId: uuid("warehouse_id").references(() => pharmacyWarehouses.id, { onDelete: "set null" }),
+  reason: text("reason"),
+  totalPkr: integer("total_pkr").notNull().default(0),
+  status: text("status").notNull().default("posted"),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const pharmacyWholesaleReturnLines = pgTable("pharmacy_wholesale_return_lines", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  returnId: uuid("return_id")
+    .notNull()
+    .references(() => pharmacyWholesaleReturns.id, { onDelete: "cascade" }),
+  medicineId: uuid("medicine_id")
+    .notNull()
+    .references(() => pharmacyMedicines.id, { onDelete: "restrict" }),
+  batchId: uuid("batch_id").references(() => pharmacyMedicineBatches.id, { onDelete: "set null" }),
+  quantity: integer("quantity").notNull(),
+  unitPricePkr: integer("unit_price_pkr").notNull().default(0),
+  lineTotalPkr: integer("line_total_pkr").notNull().default(0),
 });

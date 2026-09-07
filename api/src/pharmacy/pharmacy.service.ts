@@ -26,6 +26,9 @@ import {
   pharmacyControlledDrugLogs,
   pharmacyDistInvoices,
   pharmacyDistOrders,
+  pharmacyDoctorCommissionEntries,
+  pharmacyDoctorCommissionRules,
+  pharmacyDoctorRecommendations,
   pharmacyDoctors,
   pharmacyGrns,
   pharmacyKhataEntries,
@@ -1527,6 +1530,45 @@ export class PharmacyService implements OnModuleInit {
       .where(and(eq(pharmacyPrescriptions.organizationId, organizationId), eq(pharmacyPrescriptions.branchId, branch.id)))
       .groupBy(pharmacyPrescriptions.doctorId);
 
+    const salesByDoctor = await this.db
+      .select({
+        doctorId: pharmacyPrescriptions.doctorId,
+        total: sql<number>`coalesce(sum(${pharmacySales.totalPkr}), 0)`,
+      })
+      .from(pharmacySales)
+      .innerJoin(pharmacyPrescriptions, eq(pharmacyPrescriptions.id, pharmacySales.prescriptionId))
+      .where(and(eq(pharmacySales.organizationId, organizationId), eq(pharmacySales.branchId, branch.id)))
+      .groupBy(pharmacyPrescriptions.doctorId);
+
+    const commissionByDoctor = await this.db
+      .select({
+        doctorId: pharmacyDoctorCommissionEntries.doctorId,
+        total: sql<number>`coalesce(sum(${pharmacyDoctorCommissionEntries.amountPkr}), 0)`,
+      })
+      .from(pharmacyDoctorCommissionEntries)
+      .where(
+        and(
+          eq(pharmacyDoctorCommissionEntries.organizationId, organizationId),
+          eq(pharmacyDoctorCommissionEntries.branchId, branch.id),
+          eq(pharmacyDoctorCommissionEntries.status, "accrued"),
+        ),
+      )
+      .groupBy(pharmacyDoctorCommissionEntries.doctorId);
+
+    const prefCounts = await this.db
+      .select({
+        doctorId: pharmacyDoctorRecommendations.doctorId,
+        count: sql<number>`count(*)`,
+      })
+      .from(pharmacyDoctorRecommendations)
+      .where(
+        and(
+          eq(pharmacyDoctorRecommendations.organizationId, organizationId),
+          eq(pharmacyDoctorRecommendations.active, true),
+        ),
+      )
+      .groupBy(pharmacyDoctorRecommendations.doctorId);
+
     return rows.map((d) => ({
       id: d.id,
       code: d.code ?? null,
@@ -1537,6 +1579,9 @@ export class PharmacyService implements OnModuleInit {
       phone: d.phone,
       email: d.email,
       prescriptionCount: Number(rxCounts.find((r) => r.doctorId === d.id)?.count ?? 0),
+      referredSalesPkr: Number(salesByDoctor.find((r) => r.doctorId === d.id)?.total ?? 0),
+      accruedCommissionPkr: Number(commissionByDoctor.find((r) => r.doctorId === d.id)?.total ?? 0),
+      preferredCount: Number(prefCounts.find((r) => r.doctorId === d.id)?.count ?? 0),
     }));
   }
 
@@ -1568,7 +1613,271 @@ export class PharmacyService implements OnModuleInit {
       phone: row.phone,
       email: row.email,
       prescriptionCount: 0,
+      referredSalesPkr: 0,
+      accruedCommissionPkr: 0,
+      preferredCount: 0,
     };
+  }
+
+  async listDoctorRecommendations(organizationId: string, doctorId: string) {
+    const rows = await this.db
+      .select({
+        id: pharmacyDoctorRecommendations.id,
+        doctorId: pharmacyDoctorRecommendations.doctorId,
+        medicineId: pharmacyDoctorRecommendations.medicineId,
+        medicineName: pharmacyMedicines.name,
+        medicineSku: pharmacyMedicines.sku,
+        priority: pharmacyDoctorRecommendations.priority,
+        notes: pharmacyDoctorRecommendations.notes,
+        active: pharmacyDoctorRecommendations.active,
+      })
+      .from(pharmacyDoctorRecommendations)
+      .leftJoin(pharmacyMedicines, eq(pharmacyMedicines.id, pharmacyDoctorRecommendations.medicineId))
+      .where(
+        and(
+          eq(pharmacyDoctorRecommendations.organizationId, organizationId),
+          eq(pharmacyDoctorRecommendations.doctorId, doctorId),
+        ),
+      )
+      .orderBy(asc(pharmacyDoctorRecommendations.priority));
+    return rows.map((r) => ({
+      id: r.id,
+      doctorId: r.doctorId,
+      medicineId: r.medicineId,
+      medicineName: r.medicineName ?? undefined,
+      medicineSku: r.medicineSku ?? undefined,
+      priority: r.priority,
+      notes: r.notes,
+      active: r.active,
+    }));
+  }
+
+  async addDoctorRecommendation(
+    organizationId: string,
+    doctorId: string,
+    input: { medicineId: string; priority?: number; notes?: string },
+  ) {
+    const [doc] = await this.db
+      .select()
+      .from(pharmacyDoctors)
+      .where(and(eq(pharmacyDoctors.id, doctorId), eq(pharmacyDoctors.organizationId, organizationId)))
+      .limit(1);
+    if (!doc) throw new NotFoundException("Doctor not found");
+    const [row] = await this.db
+      .insert(pharmacyDoctorRecommendations)
+      .values({
+        organizationId,
+        doctorId,
+        medicineId: input.medicineId,
+        priority: Math.max(1, Math.round(input.priority ?? 1)),
+        notes: input.notes?.trim() || null,
+        active: true,
+      })
+      .returning();
+    if (!row) throw new BadRequestException("Failed to add recommendation");
+    return (await this.listDoctorRecommendations(organizationId, doctorId)).find((r) => r.id === row.id)!;
+  }
+
+  async removeDoctorRecommendation(organizationId: string, recommendationId: string) {
+    await this.db
+      .delete(pharmacyDoctorRecommendations)
+      .where(
+        and(
+          eq(pharmacyDoctorRecommendations.id, recommendationId),
+          eq(pharmacyDoctorRecommendations.organizationId, organizationId),
+        ),
+      );
+    return { ok: true };
+  }
+
+  async listDoctorCommissionRules(organizationId: string, doctorId: string) {
+    const rows = await this.db
+      .select()
+      .from(pharmacyDoctorCommissionRules)
+      .where(
+        and(
+          eq(pharmacyDoctorCommissionRules.organizationId, organizationId),
+          eq(pharmacyDoctorCommissionRules.doctorId, doctorId),
+        ),
+      )
+      .orderBy(desc(pharmacyDoctorCommissionRules.createdAt));
+    return rows.map((r) => ({
+      id: r.id,
+      doctorId: r.doctorId,
+      medicineId: r.medicineId,
+      companyId: r.companyId,
+      ruleType: (r.ruleType === "fixed" ? "fixed" : "percent") as "percent" | "fixed",
+      rateValue: r.rateValue,
+      active: r.active,
+      notes: r.notes,
+    }));
+  }
+
+  async upsertDoctorCommissionRule(
+    organizationId: string,
+    doctorId: string,
+    input: {
+      medicineId?: string;
+      companyId?: string;
+      ruleType?: "percent" | "fixed";
+      rateValue: number;
+      notes?: string;
+    },
+  ) {
+    const [doc] = await this.db
+      .select()
+      .from(pharmacyDoctors)
+      .where(and(eq(pharmacyDoctors.id, doctorId), eq(pharmacyDoctors.organizationId, organizationId)))
+      .limit(1);
+    if (!doc) throw new NotFoundException("Doctor not found");
+    const [row] = await this.db
+      .insert(pharmacyDoctorCommissionRules)
+      .values({
+        organizationId,
+        doctorId,
+        medicineId: input.medicineId ?? null,
+        companyId: input.companyId ?? null,
+        ruleType: input.ruleType ?? "percent",
+        rateValue: Math.round(input.rateValue),
+        active: true,
+        notes: input.notes?.trim() || null,
+      })
+      .returning();
+    if (!row) throw new BadRequestException("Failed to create commission rule");
+    return {
+      id: row.id,
+      doctorId: row.doctorId,
+      medicineId: row.medicineId,
+      companyId: row.companyId,
+      ruleType: (row.ruleType === "fixed" ? "fixed" : "percent") as "percent" | "fixed",
+      rateValue: row.rateValue,
+      active: row.active,
+      notes: row.notes,
+    };
+  }
+
+  async listDoctorCommissionEntries(organizationId: string, doctorId: string) {
+    const rows = await this.db
+      .select({
+        id: pharmacyDoctorCommissionEntries.id,
+        doctorId: pharmacyDoctorCommissionEntries.doctorId,
+        saleId: pharmacyDoctorCommissionEntries.saleId,
+        saleLineId: pharmacyDoctorCommissionEntries.saleLineId,
+        medicineId: pharmacyDoctorCommissionEntries.medicineId,
+        medicineName: pharmacyMedicines.name,
+        invoiceNumber: pharmacySales.invoiceNumber,
+        basePkr: pharmacyDoctorCommissionEntries.basePkr,
+        rateValue: pharmacyDoctorCommissionEntries.rateValue,
+        ruleType: pharmacyDoctorCommissionEntries.ruleType,
+        amountPkr: pharmacyDoctorCommissionEntries.amountPkr,
+        status: pharmacyDoctorCommissionEntries.status,
+        notes: pharmacyDoctorCommissionEntries.notes,
+        createdAt: pharmacyDoctorCommissionEntries.createdAt,
+        paidAt: pharmacyDoctorCommissionEntries.paidAt,
+      })
+      .from(pharmacyDoctorCommissionEntries)
+      .leftJoin(pharmacyMedicines, eq(pharmacyMedicines.id, pharmacyDoctorCommissionEntries.medicineId))
+      .leftJoin(pharmacySales, eq(pharmacySales.id, pharmacyDoctorCommissionEntries.saleId))
+      .where(
+        and(
+          eq(pharmacyDoctorCommissionEntries.organizationId, organizationId),
+          eq(pharmacyDoctorCommissionEntries.doctorId, doctorId),
+        ),
+      )
+      .orderBy(desc(pharmacyDoctorCommissionEntries.createdAt))
+      .limit(200);
+    return rows.map((r) => ({
+      id: r.id,
+      doctorId: r.doctorId,
+      saleId: r.saleId,
+      saleLineId: r.saleLineId,
+      medicineId: r.medicineId,
+      medicineName: r.medicineName ?? null,
+      invoiceNumber: r.invoiceNumber ?? null,
+      basePkr: r.basePkr,
+      rateValue: r.rateValue,
+      ruleType: r.ruleType,
+      amountPkr: r.amountPkr,
+      status: r.status,
+      notes: r.notes,
+      createdAt: r.createdAt.toISOString(),
+      paidAt: r.paidAt ? r.paidAt.toISOString() : null,
+    }));
+  }
+
+  async markDoctorCommissionPaid(organizationId: string, entryIds: string[]) {
+    if (!entryIds.length) throw new BadRequestException("entryIds required");
+    await this.db
+      .update(pharmacyDoctorCommissionEntries)
+      .set({ status: "paid", paidAt: new Date() })
+      .where(
+        and(
+          eq(pharmacyDoctorCommissionEntries.organizationId, organizationId),
+          inArray(pharmacyDoctorCommissionEntries.id, entryIds),
+        ),
+      );
+    return { ok: true, count: entryIds.length };
+  }
+
+  /** Accrue commission when sale is linked to a prescription with a doctor. */
+  async accrueDoctorCommissionForSale(organizationId: string, branchId: string, saleId: string, prescriptionId?: string | null) {
+    if (!prescriptionId) return;
+    const [rx] = await this.db
+      .select()
+      .from(pharmacyPrescriptions)
+      .where(and(eq(pharmacyPrescriptions.id, prescriptionId), eq(pharmacyPrescriptions.organizationId, organizationId)))
+      .limit(1);
+    if (!rx?.doctorId) return;
+
+    const rules = await this.db
+      .select()
+      .from(pharmacyDoctorCommissionRules)
+      .where(
+        and(
+          eq(pharmacyDoctorCommissionRules.organizationId, organizationId),
+          eq(pharmacyDoctorCommissionRules.doctorId, rx.doctorId),
+          eq(pharmacyDoctorCommissionRules.active, true),
+        ),
+      );
+    if (!rules.length) return;
+
+    const lines = await this.db
+      .select({
+        id: pharmacySaleLines.id,
+        medicineId: pharmacySaleLines.medicineId,
+        lineTotalPkr: pharmacySaleLines.lineTotalPkr,
+        companyId: pharmacyMedicines.companyId,
+      })
+      .from(pharmacySaleLines)
+      .leftJoin(pharmacyMedicines, eq(pharmacyMedicines.id, pharmacySaleLines.medicineId))
+      .where(eq(pharmacySaleLines.saleId, saleId));
+
+    for (const line of lines) {
+      const rule =
+        rules.find((r) => r.medicineId && r.medicineId === line.medicineId) ??
+        rules.find((r) => r.companyId && r.companyId === line.companyId) ??
+        rules.find((r) => !r.medicineId && !r.companyId);
+      if (!rule) continue;
+      const amount =
+        rule.ruleType === "fixed"
+          ? rule.rateValue
+          : Math.round((line.lineTotalPkr * rule.rateValue) / 100);
+      if (amount <= 0) continue;
+      await this.db.insert(pharmacyDoctorCommissionEntries).values({
+        organizationId,
+        branchId,
+        doctorId: rx.doctorId,
+        saleId,
+        saleLineId: line.id,
+        medicineId: line.medicineId,
+        basePkr: line.lineTotalPkr,
+        rateValue: rule.rateValue,
+        ruleType: rule.ruleType,
+        amountPkr: amount,
+        status: "accrued",
+        notes: `Auto from Rx ${rx.prescriptionNumber}`,
+      });
+    }
   }
 
   async listPrescriptions(organizationId: string, branchCode: string) {
@@ -2070,6 +2379,12 @@ export class PharmacyService implements OnModuleInit {
       });
     } catch {
       /* accounting should not block POS */
+    }
+
+    try {
+      await this.accrueDoctorCommissionForSale(organizationId, branch.id, sale.id, input.prescriptionId);
+    } catch {
+      /* commission should not block POS */
     }
 
     return this.listSales(organizationId, input.branchCode).then((list) => list.find((s) => s.id === sale.id)!);

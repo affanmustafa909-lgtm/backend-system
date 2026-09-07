@@ -186,6 +186,49 @@ export const pharmacyDoctorSchema = z.object({
   phone: z.string().nullable(),
   email: z.string().nullable(),
   prescriptionCount: z.number(),
+  referredSalesPkr: z.number().optional().default(0),
+  accruedCommissionPkr: z.number().optional().default(0),
+  preferredCount: z.number().optional().default(0),
+});
+
+export const pharmacyDoctorRecommendationSchema = z.object({
+  id: z.string().uuid(),
+  doctorId: z.string().uuid(),
+  medicineId: z.string().uuid(),
+  medicineName: z.string().optional(),
+  medicineSku: z.string().optional(),
+  priority: z.number(),
+  notes: z.string().nullable().optional(),
+  active: z.boolean(),
+});
+
+export const pharmacyDoctorCommissionRuleSchema = z.object({
+  id: z.string().uuid(),
+  doctorId: z.string().uuid(),
+  medicineId: z.string().uuid().nullable().optional(),
+  companyId: z.string().uuid().nullable().optional(),
+  ruleType: z.enum(["percent", "fixed"]),
+  rateValue: z.number(),
+  active: z.boolean(),
+  notes: z.string().nullable().optional(),
+});
+
+export const pharmacyDoctorCommissionEntrySchema = z.object({
+  id: z.string().uuid(),
+  doctorId: z.string().uuid(),
+  saleId: z.string().uuid(),
+  saleLineId: z.string().uuid().nullable().optional(),
+  medicineId: z.string().uuid().nullable().optional(),
+  medicineName: z.string().nullable().optional(),
+  invoiceNumber: z.string().nullable().optional(),
+  basePkr: z.number(),
+  rateValue: z.number(),
+  ruleType: z.string(),
+  amountPkr: z.number(),
+  status: z.string(),
+  notes: z.string().nullable().optional(),
+  createdAt: z.string(),
+  paidAt: z.string().nullable().optional(),
 });
 
 export const prescriptionItemSchema = z.object({
@@ -523,6 +566,9 @@ export type MedicineBatch = z.infer<typeof medicineBatchSchema>;
 export type PharmacyPatient = z.infer<typeof pharmacyPatientSchema>;
 export type PharmacyKhataEntry = z.infer<typeof pharmacyKhataEntrySchema>;
 export type PharmacyDoctor = z.infer<typeof pharmacyDoctorSchema>;
+export type PharmacyDoctorRecommendation = z.infer<typeof pharmacyDoctorRecommendationSchema>;
+export type PharmacyDoctorCommissionRule = z.infer<typeof pharmacyDoctorCommissionRuleSchema>;
+export type PharmacyDoctorCommissionEntry = z.infer<typeof pharmacyDoctorCommissionEntrySchema>;
 export type Prescription = z.infer<typeof prescriptionSchema>;
 export type PharmacySale = z.infer<typeof pharmacySaleSchema>;
 export type PharmacyShift = z.infer<typeof pharmacyShiftSchema>;

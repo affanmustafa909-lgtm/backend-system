@@ -33,6 +33,8 @@ export const PHARMACY_CODE_PREFIXES = {
   visit: "VIS",
   target: "TGT",
   batch: "BAT",
+  wholesaleReturn: "WRN",
+  doctorCommission: "DCR",
 } as const;
 
 export type PharmacyCodeModule = keyof typeof PHARMACY_CODE_PREFIXES;
@@ -66,6 +68,8 @@ export const PHARMACY_CODE_CATALOG: {
   { module: "priceList", prefix: "PL", label: "Price lists", path: "/pops/pharmacy/pricing" },
   { module: "scheme", prefix: "SCH", label: "Schemes", path: "/pops/pharmacy/pricing" },
   { module: "assignment", prefix: "ASN", label: "Assignments", path: "/pops/pharmacy/distribution/assignments" },
+  { module: "wholesaleReturn", prefix: "WRN", label: "Wholesale returns", path: "/pops/pharmacy/distribution/wholesale-returns" },
+  { module: "doctorCommission", prefix: "DCR", label: "Doctor commission", path: "/pops/pharmacy/doctors" },
 ];
 
 /** Build DOC-000042 style codes. */

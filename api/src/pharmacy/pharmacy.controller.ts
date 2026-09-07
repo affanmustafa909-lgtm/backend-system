@@ -168,6 +168,66 @@ export class PharmacyController {
     return this.pharmacy.createDoctor(user.organizationId, createDoctorSchema.parse(body));
   }
 
+  @Get("doctors/:doctorId/recommendations")
+  @RequirePermissions("pops.read")
+  listDoctorRecommendations(@CurrentUser() user: AccessJwtPayload, @Param("doctorId") doctorId: string) {
+    return this.pharmacy.listDoctorRecommendations(user.organizationId, doctorId);
+  }
+
+  @Post("doctors/:doctorId/recommendations")
+  @RequirePermissions("pops.read")
+  addDoctorRecommendation(
+    @CurrentUser() user: AccessJwtPayload,
+    @Param("doctorId") doctorId: string,
+    @Body() body: { medicineId: string; priority?: number; notes?: string },
+  ) {
+    return this.pharmacy.addDoctorRecommendation(user.organizationId, doctorId, body);
+  }
+
+  @Delete("doctors/recommendations/:recommendationId")
+  @RequirePermissions("pops.read")
+  removeDoctorRecommendation(
+    @CurrentUser() user: AccessJwtPayload,
+    @Param("recommendationId") recommendationId: string,
+  ) {
+    return this.pharmacy.removeDoctorRecommendation(user.organizationId, recommendationId);
+  }
+
+  @Get("doctors/:doctorId/commission-rules")
+  @RequirePermissions("pops.read")
+  listDoctorCommissionRules(@CurrentUser() user: AccessJwtPayload, @Param("doctorId") doctorId: string) {
+    return this.pharmacy.listDoctorCommissionRules(user.organizationId, doctorId);
+  }
+
+  @Post("doctors/:doctorId/commission-rules")
+  @RequirePermissions("pops.read")
+  upsertDoctorCommissionRule(
+    @CurrentUser() user: AccessJwtPayload,
+    @Param("doctorId") doctorId: string,
+    @Body()
+    body: {
+      medicineId?: string;
+      companyId?: string;
+      ruleType?: "percent" | "fixed";
+      rateValue: number;
+      notes?: string;
+    },
+  ) {
+    return this.pharmacy.upsertDoctorCommissionRule(user.organizationId, doctorId, body);
+  }
+
+  @Get("doctors/:doctorId/commission-entries")
+  @RequirePermissions("pops.read")
+  listDoctorCommissionEntries(@CurrentUser() user: AccessJwtPayload, @Param("doctorId") doctorId: string) {
+    return this.pharmacy.listDoctorCommissionEntries(user.organizationId, doctorId);
+  }
+
+  @Post("doctors/commission-entries/mark-paid")
+  @RequirePermissions("pops.read")
+  markDoctorCommissionPaid(@CurrentUser() user: AccessJwtPayload, @Body() body: { entryIds: string[] }) {
+    return this.pharmacy.markDoctorCommissionPaid(user.organizationId, body.entryIds ?? []);
+  }
+
   @Get("prescriptions")
   @RequirePermissions("pops.read")
   listPrescriptions(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {

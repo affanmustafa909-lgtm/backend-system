@@ -125,7 +125,15 @@ export class PharmacyErpController {
   @RequirePermissions("distribution.masters", "pops.inventory.manage")
   createRoute(
     @CurrentUser() user: AccessJwtPayload,
-    @Body() body: { areaId: string; code: string; name: string; station?: string },
+    @Body()
+    body: {
+      areaId: string;
+      code: string;
+      name: string;
+      station?: string;
+      sequenceNo?: number;
+      pjpDayOfWeek?: number | null;
+    },
   ) {
     return this.erp.createRoute(user.organizationId, body);
   }
@@ -136,10 +144,22 @@ export class PharmacyErpController {
     return this.erp.listTradeCustomers(user.organizationId);
   }
 
+  @Get("trade-customers/:id/ledger")
+  @RequirePermissions("distribution.masters", "pharmacy.view", "pops.read")
+  tradeCustomerLedger(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string) {
+    return this.erp.getTradeCustomerLedger(user.organizationId, id);
+  }
+
   @Post("trade-customers")
   @RequirePermissions("distribution.masters", "pops.inventory.manage")
   createTradeCustomer(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
     return this.erp.createTradeCustomer(user.organizationId, createPharmacyTradeCustomerSchema.parse(body));
+  }
+
+  @Get("employees-picker")
+  @RequirePermissions("distribution.field", "pharmacy.view", "pops.read")
+  employeesPicker(@CurrentUser() user: AccessJwtPayload) {
+    return this.erp.listEmployeesForPicker(user.organizationId);
   }
 
   @Get("sales-force")
@@ -373,6 +393,7 @@ export class PharmacyErpController {
       purpose?: string;
       status?: string;
       productive?: boolean;
+      isOutstation?: boolean;
       orderId?: string;
       collectionId?: string;
       notes?: string;
@@ -475,5 +496,28 @@ export class PharmacyErpController {
       priceLevel: parsed.priceLevel,
       qty: parsed.qty,
     });
+  }
+
+  @Get("distribution/wholesale-returns")
+  @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
+  listWholesaleReturns(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
+    return this.erp.listWholesaleReturns(user.organizationId, branchCode?.trim() ?? "");
+  }
+
+  @Post("distribution/wholesale-returns")
+  @RequirePermissions("distribution.orders", "pops.inventory.manage")
+  createWholesaleReturn(
+    @CurrentUser() user: AccessJwtPayload,
+    @Body()
+    body: {
+      branchCode: string;
+      tradeCustomerId: string;
+      invoiceId?: string;
+      warehouseId?: string;
+      reason?: string;
+      lines: { medicineId: string; batchId?: string; quantity: number; unitPricePkr?: number }[];
+    },
+  ) {
+    return this.erp.createWholesaleReturn(user.organizationId, body, user.sub);
   }
 }
