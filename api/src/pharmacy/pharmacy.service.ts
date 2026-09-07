@@ -40,9 +40,11 @@ import {
   users,
   type PlatformPgDb,
 } from "@platform/database-pg";
+import { AccountingHooksService } from "../accounting/accounting-hooks.service";
 import { DRIZZLE } from "../drizzle/drizzle.tokens";
 import { TaxAuthorityService } from "../tax-authority/tax-authority.service";
 import { mapMedicineRow, parseJsonArray, parsePaymentsJson, stringifyJsonArray } from "./pharmacy-mappers";
+import { PharmacyStockEngine, type StockTx } from "./pharmacy-stock.engine";
 
 const MEDICINE_SEEDS = [
   {
@@ -161,6 +163,8 @@ export class PharmacyService implements OnModuleInit {
   constructor(
     @Inject(DRIZZLE) private readonly db: PlatformPgDb,
     private readonly taxAuthority: TaxAuthorityService,
+    private readonly stock: PharmacyStockEngine,
+    private readonly accountingHooks: AccountingHooksService,
   ) {}
 
   onModuleInit(): void {
@@ -1111,71 +1115,19 @@ export class PharmacyService implements OnModuleInit {
     medicineId: string,
     qty: number,
     preferredBatchId?: string,
+    tx: StockTx = this.db,
+    reference?: { referenceType?: string; referenceId?: string; createdByUserId?: string },
   ): Promise<string | null> {
-    const [med] = await this.db
-      .select()
-      .from(pharmacyMedicines)
-      .where(
-        and(
-          eq(pharmacyMedicines.id, medicineId),
-          eq(pharmacyMedicines.organizationId, organizationId),
-          eq(pharmacyMedicines.branchId, branchId),
-        ),
-      )
-      .limit(1);
-    if (!med) throw new NotFoundException("Medicine not found for this branch");
-    if (med.currentStock < qty) throw new BadRequestException(`Insufficient stock for ${med.name}`);
-
-    let usedBatchId: string | null = null;
-    let remaining = qty;
-
-    if (preferredBatchId) {
-      const [batch] = await this.db
-        .select()
-        .from(pharmacyMedicineBatches)
-        .where(
-          and(
-            eq(pharmacyMedicineBatches.id, preferredBatchId),
-            eq(pharmacyMedicineBatches.medicineId, medicineId),
-            sql`${pharmacyMedicineBatches.quantity} > 0`,
-          ),
-        )
-        .limit(1);
-      if (!batch) throw new BadRequestException("Selected batch is unavailable");
-      if (batch.quantity < qty) throw new BadRequestException("Insufficient quantity in selected batch");
-      await this.db
-        .update(pharmacyMedicineBatches)
-        .set({ quantity: batch.quantity - qty })
-        .where(eq(pharmacyMedicineBatches.id, batch.id));
-      usedBatchId = batch.id;
-      remaining = 0;
-    }
-
-    if (remaining > 0) {
-      const batches = await this.db
-        .select()
-        .from(pharmacyMedicineBatches)
-        .where(and(eq(pharmacyMedicineBatches.medicineId, medicineId), sql`${pharmacyMedicineBatches.quantity} > 0`))
-        .orderBy(asc(pharmacyMedicineBatches.expiryDate));
-
-      for (const batch of batches) {
-        if (remaining <= 0) break;
-        const take = Math.min(batch.quantity, remaining);
-        await this.db
-          .update(pharmacyMedicineBatches)
-          .set({ quantity: batch.quantity - take })
-          .where(eq(pharmacyMedicineBatches.id, batch.id));
-        if (!usedBatchId) usedBatchId = batch.id;
-        remaining -= take;
-      }
-    }
-
-    await this.db
-      .update(pharmacyMedicines)
-      .set({ currentStock: med.currentStock - qty })
-      .where(eq(pharmacyMedicines.id, medicineId));
-
-    return usedBatchId;
+    return this.stock.deductFefo(tx, {
+      organizationId,
+      branchId,
+      medicineId,
+      qty,
+      preferredBatchId,
+      referenceType: reference?.referenceType,
+      referenceId: reference?.referenceId,
+      createdByUserId: reference?.createdByUserId,
+    });
   }
 
   async dispensePrescription(organizationId: string, prescriptionId: string, branchCode: string) {
@@ -1209,6 +1161,7 @@ export class PharmacyService implements OnModuleInit {
     const sale = await this.createSale(organizationId, {
       branchCode,
       patientId: rx.patientId ?? undefined,
+      prescriptionId,
       paymentMethod: "Cash",
       discount: 0,
       lines,
@@ -1272,6 +1225,8 @@ export class PharmacyService implements OnModuleInit {
         invoiceNumber: sale.invoiceNumber,
         patientId: sale.patientId,
         patientName: patient[0]?.name ?? null,
+        prescriptionId: sale.prescriptionId,
+        shiftId: sale.shiftId,
         paymentMethod: sale.paymentMethod as CreatePharmacySale["paymentMethod"],
         payments,
         amountPaid: sale.amountPaidPkr,
@@ -1397,123 +1352,129 @@ export class PharmacyService implements OnModuleInit {
     const paymentMethod =
       payments.length > 1 || input.paymentMethod === "Mixed" ? "Mixed" : (payments[0]?.method ?? input.paymentMethod);
 
-    const [sale] = await this.db
-      .insert(pharmacySales)
-      .values({
-        organizationId,
-        branchId: branch.id,
-        invoiceNumber,
-        patientId: input.patientId ?? null,
-        prescriptionId: input.prescriptionId ?? null,
-        shiftId: input.shiftId ?? null,
-        cashierUserId: cashierUserId ?? null,
-        paymentMethod,
-        paymentsJson: JSON.stringify(payments),
-        amountPaidPkr: amountPaid,
-        amountDuePkr: amountDue,
-        subtotalPkr: subtotal,
-        taxPkr: tax,
-        discountPkr: discount,
-        totalPkr: total,
-      })
-      .returning();
-    if (!sale) throw new BadRequestException("Failed to create sale");
-
-    for (const line of lineData) {
-      const batchId = await this.deductMedicineStock(
-        organizationId,
-        branch.id,
-        line.medicineId,
-        line.tabletsQty,
-        line.batchId,
-      );
-      await this.db.insert(pharmacySaleLines).values({
-        saleId: sale.id,
-        medicineId: line.medicineId,
-        batchId,
-        saleUnit: line.saleUnit,
-        qty: line.qty,
-        tabletsQty: line.tabletsQty,
-        unitPricePkr: line.unitPrice,
-        lineTotalPkr: line.lineTotal,
-      });
-
-      if (line.isControlled) {
-        await this.db.insert(pharmacyControlledDrugLogs).values({
+    const sale = await this.db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(pharmacySales)
+        .values({
           organizationId,
           branchId: branch.id,
-          medicineId: line.medicineId,
-          saleId: sale.id,
+          invoiceNumber,
           patientId: input.patientId ?? null,
           prescriptionId: input.prescriptionId ?? null,
+          shiftId: input.shiftId ?? null,
+          cashierUserId: cashierUserId ?? null,
+          paymentMethod,
+          paymentsJson: JSON.stringify(payments),
+          amountPaidPkr: amountPaid,
+          amountDuePkr: amountDue,
+          subtotalPkr: subtotal,
+          taxPkr: tax,
+          discountPkr: discount,
+          totalPkr: total,
+        })
+        .returning();
+      if (!created) throw new BadRequestException("Failed to create sale");
+
+      for (const line of lineData) {
+        const batchId = await this.deductMedicineStock(
+          organizationId,
+          branch.id,
+          line.medicineId,
+          line.tabletsQty,
+          line.batchId,
+          tx,
+          { referenceType: "sale", referenceId: created.id, createdByUserId: cashierUserId },
+        );
+        await tx.insert(pharmacySaleLines).values({
+          saleId: created.id,
+          medicineId: line.medicineId,
+          batchId,
+          saleUnit: line.saleUnit,
           qty: line.qty,
-          approvedByUserId: cashierUserId ?? null,
-          buyerInfoJson: input.patientId ? null : JSON.stringify({ walkIn: true }),
+          tabletsQty: line.tabletsQty,
+          unitPricePkr: line.unitPrice,
+          lineTotalPkr: line.lineTotal,
         });
+
+        if (line.isControlled) {
+          await tx.insert(pharmacyControlledDrugLogs).values({
+            organizationId,
+            branchId: branch.id,
+            medicineId: line.medicineId,
+            saleId: created.id,
+            patientId: input.patientId ?? null,
+            prescriptionId: input.prescriptionId ?? null,
+            qty: line.qty,
+            approvedByUserId: cashierUserId ?? null,
+            buyerInfoJson: input.patientId ? null : JSON.stringify({ walkIn: true }),
+          });
+        }
+
+        if (input.patientId) {
+          const [patient] = await tx
+            .select()
+            .from(pharmacyPatients)
+            .where(eq(pharmacyPatients.id, input.patientId))
+            .limit(1);
+          if (patient?.refillReminderEnabled) {
+            const dueDate = new Date();
+            dueDate.setDate(dueDate.getDate() + 30);
+            await tx.insert(pharmacyRefillReminders).values({
+              organizationId,
+              branchId: branch.id,
+              patientId: input.patientId,
+              medicineId: line.medicineId,
+              lastSaleId: created.id,
+              refillDueDate: dueDate.toISOString().slice(0, 10),
+              channel: patient.refillReminderChannel ?? "sms",
+              status: "pending",
+            });
+          }
+        }
       }
 
       if (input.patientId) {
-        const [patient] = await this.db
-          .select()
-          .from(pharmacyPatients)
-          .where(eq(pharmacyPatients.id, input.patientId))
-          .limit(1);
-        if (patient?.refillReminderEnabled) {
-          const dueDate = new Date();
-          dueDate.setDate(dueDate.getDate() + 30);
-          await this.db.insert(pharmacyRefillReminders).values({
-            organizationId,
-            branchId: branch.id,
-            patientId: input.patientId,
-            medicineId: line.medicineId,
-            lastSaleId: sale.id,
-            refillDueDate: dueDate.toISOString().slice(0, 10),
-            channel: patient.refillReminderChannel ?? "sms",
-            status: "pending",
-          });
+        const [patient] = await tx.select().from(pharmacyPatients).where(eq(pharmacyPatients.id, input.patientId)).limit(1);
+        if (patient) {
+          const newOutstanding = patient.outstandingPkr + amountDue;
+          await tx
+            .update(pharmacyPatients)
+            .set({
+              loyaltyPoints: patient.loyaltyPoints + Math.floor(total / 100),
+              outstandingPkr: newOutstanding,
+            })
+            .where(eq(pharmacyPatients.id, patient.id));
+
+          if (amountDue > 0) {
+            await tx.insert(pharmacyKhataEntries).values({
+              organizationId,
+              branchId: branch.id,
+              patientId: patient.id,
+              saleId: created.id,
+              type: "sale",
+              amountPkr: amountDue,
+              balanceAfterPkr: newOutstanding,
+              notes: `Invoice ${invoiceNumber}`,
+            });
+          }
         }
       }
-    }
 
-    if (input.patientId) {
-      const [patient] = await this.db.select().from(pharmacyPatients).where(eq(pharmacyPatients.id, input.patientId)).limit(1);
-      if (patient) {
-        const newOutstanding = patient.outstandingPkr + amountDue;
-        await this.db
-          .update(pharmacyPatients)
-          .set({
-            loyaltyPoints: patient.loyaltyPoints + Math.floor(total / 100),
-            outstandingPkr: newOutstanding,
-          })
-          .where(eq(pharmacyPatients.id, patient.id));
-
-        if (amountDue > 0) {
-          await this.db.insert(pharmacyKhataEntries).values({
-            organizationId,
-            branchId: branch.id,
-            patientId: patient.id,
-            saleId: sale.id,
-            type: "sale",
-            amountPkr: amountDue,
-            balanceAfterPkr: newOutstanding,
-            notes: `Invoice ${invoiceNumber}`,
-          });
+      if (input.shiftId) {
+        const [shift] = await tx.select().from(pharmacyShifts).where(eq(pharmacyShifts.id, input.shiftId)).limit(1);
+        if (shift && shift.status === "open") {
+          await tx
+            .update(pharmacyShifts)
+            .set({
+              totalSalesPkr: shift.totalSalesPkr + total,
+              transactionCount: shift.transactionCount + 1,
+            })
+            .where(eq(pharmacyShifts.id, shift.id));
         }
       }
-    }
 
-    if (input.shiftId) {
-      const [shift] = await this.db.select().from(pharmacyShifts).where(eq(pharmacyShifts.id, input.shiftId)).limit(1);
-      if (shift && shift.status === "open") {
-        await this.db
-          .update(pharmacyShifts)
-          .set({
-            totalSalesPkr: shift.totalSalesPkr + total,
-            transactionCount: shift.transactionCount + 1,
-          })
-          .where(eq(pharmacyShifts.id, shift.id));
-      }
-    }
+      return created;
+    });
 
     await this.taxAuthority.enqueueFromSale({
       organizationId,
@@ -1525,6 +1486,23 @@ export class PharmacyService implements OnModuleInit {
       taxableAmountPkr: Math.max(0, subtotal - discount),
       taxAmountPkr: tax,
     });
+
+    try {
+      await this.accountingHooks.recordSaleFromPharmacySale(organizationId, branch.id, {
+        invoiceNumber: sale.invoiceNumber,
+        subtotalPkr: sale.subtotalPkr,
+        discountPkr: sale.discountPkr,
+        taxPkr: sale.taxPkr,
+        totalPkr: sale.totalPkr,
+        amountPaidPkr: sale.amountPaidPkr,
+        amountDuePkr: sale.amountDuePkr,
+        paymentsJson: sale.paymentsJson,
+        paymentMethod: sale.paymentMethod,
+        createdAt: sale.createdAt,
+      });
+    } catch {
+      /* accounting should not block POS */
+    }
 
     return this.listSales(organizationId, input.branchCode).then((list) => list.find((s) => s.id === sale.id)!);
   }
@@ -2227,12 +2205,28 @@ export class PharmacyService implements OnModuleInit {
     if (!shift) throw new NotFoundException("Shift not found");
     if (shift.status === "closed") throw new BadRequestException("Shift already closed");
 
-    const cashSales = await this.db
-      .select({ total: sql<number>`coalesce(sum(${pharmacySales.amountPaidPkr}), 0)` })
+    const shiftSales = await this.db
+      .select({
+        paymentMethod: pharmacySales.paymentMethod,
+        amountPaidPkr: pharmacySales.amountPaidPkr,
+        paymentsJson: pharmacySales.paymentsJson,
+      })
       .from(pharmacySales)
-      .where(and(eq(pharmacySales.shiftId, shiftId), eq(pharmacySales.paymentMethod, "Cash")));
+      .where(eq(pharmacySales.shiftId, shiftId));
 
-    const expectedCash = shift.openingCashPkr + Number(cashSales[0]?.total ?? 0);
+    let cashCollected = 0;
+    for (const sale of shiftSales) {
+      const payments = parsePaymentsJson(sale.paymentsJson);
+      if (payments.length > 0) {
+        for (const p of payments) {
+          if (p.method === "Cash") cashCollected += Math.round(p.amount);
+        }
+      } else if (sale.paymentMethod === "Cash") {
+        cashCollected += sale.amountPaidPkr;
+      }
+    }
+
+    const expectedCash = shift.openingCashPkr + cashCollected;
     const closingCash = Math.round(input.closingCashPkr);
     const difference = closingCash - expectedCash;
 

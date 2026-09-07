@@ -1,7 +1,16 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
-import { RESTAURANT_REPORT_DEFS } from "@platform/contracts";
+import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { PHARMACY_REPORT_DEFS, RESTAURANT_REPORT_DEFS } from "@platform/contracts";
 import {
+  pharmacyDistOrders,
+  pharmacyMedicines,
+  pharmacyMedicineBatches,
+  pharmacyPatients,
+  pharmacySaleLines,
+  pharmacySales,
+  pharmacyCollections,
+  pharmacyTradeCustomers,
+  pharmacyAssignments,
   popsBankAccounts,
   popsBankTransactions,
   popsBills,
@@ -70,7 +79,12 @@ export class ReportsService {
   ) {}
 
   catalog() {
-    return { reports: RESTAURANT_REPORT_DEFS.map((r) => ({ id: r.id, name: r.name, category: r.category })) };
+    return {
+      reports: [
+        ...RESTAURANT_REPORT_DEFS.map((r) => ({ id: r.id, name: r.name, category: r.category })),
+        ...PHARMACY_REPORT_DEFS.map((r) => ({ id: r.id, name: r.name, category: r.category })),
+      ],
+    };
   }
 
   async getReport(
@@ -79,7 +93,9 @@ export class ReportsService {
     reportId: string,
     query: { from?: string; to?: string; fromTime?: string; toTime?: string } = {},
   ) {
-    const def = RESTAURANT_REPORT_DEFS.find((r) => r.id === reportId);
+    const def =
+      RESTAURANT_REPORT_DEFS.find((r) => r.id === reportId) ??
+      PHARMACY_REPORT_DEFS.find((r) => r.id === reportId);
     if (!def) throw new NotFoundException(`Unknown report: ${reportId}`);
 
     const branch = await this.resolveBranch(organizationId, branchCode);
@@ -102,6 +118,10 @@ export class ReportsService {
       fromTime,
       toTime,
     };
+
+    if (reportId.startsWith("pharmacy-") || reportId.startsWith("distribution-")) {
+      return this.pharmacyDistributionReport(organizationId, branch.id, reportId, base, from, to);
+    }
 
     const range = { from, to, fromTime, toTime };
 
@@ -230,6 +250,197 @@ export class ReportsService {
       default:
         throw new NotFoundException(`Unknown report: ${reportId}`);
     }
+  }
+
+  private async pharmacyDistributionReport(
+    organizationId: string,
+    branchId: string,
+    reportId: string,
+    base: Record<string, unknown>,
+    from: string,
+    to: string,
+  ) {
+    const fromDt = new Date(`${from}T00:00:00.000Z`);
+    const toDt = new Date(`${to}T23:59:59.999Z`);
+
+    if (reportId === "pharmacy-daily-sales") {
+      const rows = await this.db
+        .select({
+          label: pharmacySales.invoiceNumber,
+          amount: pharmacySales.totalPkr,
+          meta: pharmacySales.paymentMethod,
+        })
+        .from(pharmacySales)
+        .where(
+          and(
+            eq(pharmacySales.organizationId, organizationId),
+            eq(pharmacySales.branchId, branchId),
+            gte(pharmacySales.createdAt, fromDt),
+            lte(pharmacySales.createdAt, toDt),
+          ),
+        )
+        .orderBy(desc(pharmacySales.createdAt))
+        .limit(500);
+      const total = rows.reduce((s, r) => s + Number(r.amount ?? 0), 0);
+      return { ...base, rows, totals: { amount: total }, empty: rows.length === 0 };
+    }
+
+    if (reportId === "pharmacy-product-sales") {
+      const rows = await this.db
+        .select({
+          label: pharmacyMedicines.name,
+          qty: sql<number>`coalesce(sum(${pharmacySaleLines.tabletsQty}), 0)`,
+          amount: sql<number>`coalesce(sum(${pharmacySaleLines.lineTotalPkr}), 0)`,
+        })
+        .from(pharmacySaleLines)
+        .innerJoin(pharmacySales, eq(pharmacySales.id, pharmacySaleLines.saleId))
+        .innerJoin(pharmacyMedicines, eq(pharmacyMedicines.id, pharmacySaleLines.medicineId))
+        .where(
+          and(
+            eq(pharmacySales.organizationId, organizationId),
+            eq(pharmacySales.branchId, branchId),
+            gte(pharmacySales.createdAt, fromDt),
+            lte(pharmacySales.createdAt, toDt),
+          ),
+        )
+        .groupBy(pharmacyMedicines.name)
+        .orderBy(desc(sql`coalesce(sum(${pharmacySaleLines.lineTotalPkr}), 0)`))
+        .limit(200);
+      return { ...base, rows, empty: rows.length === 0 };
+    }
+
+    if (reportId === "pharmacy-stock") {
+      const rows = await this.db
+        .select({
+          label: pharmacyMedicines.name,
+          qty: pharmacyMedicines.currentStock,
+          meta: pharmacyMedicines.sku,
+        })
+        .from(pharmacyMedicines)
+        .where(and(eq(pharmacyMedicines.organizationId, organizationId), eq(pharmacyMedicines.branchId, branchId)))
+        .orderBy(pharmacyMedicines.name)
+        .limit(500);
+      return { ...base, rows, empty: rows.length === 0 };
+    }
+
+    if (reportId === "pharmacy-expiry") {
+      const horizon = new Date();
+      horizon.setDate(horizon.getDate() + 90);
+      const rows = await this.db
+        .select({
+          label: pharmacyMedicines.name,
+          qty: pharmacyMedicineBatches.quantity,
+          meta: sql<string>`${pharmacyMedicineBatches.batchNumber} || ' exp ' || ${pharmacyMedicineBatches.expiryDate}`,
+        })
+        .from(pharmacyMedicineBatches)
+        .innerJoin(pharmacyMedicines, eq(pharmacyMedicines.id, pharmacyMedicineBatches.medicineId))
+        .where(
+          and(
+            eq(pharmacyMedicines.organizationId, organizationId),
+            eq(pharmacyMedicines.branchId, branchId),
+            lte(pharmacyMedicineBatches.expiryDate, horizon.toISOString().slice(0, 10)),
+            sql`${pharmacyMedicineBatches.quantity} > 0`,
+          ),
+        )
+        .orderBy(asc(pharmacyMedicineBatches.expiryDate))
+        .limit(500);
+      return { ...base, rows, empty: rows.length === 0 };
+    }
+
+    if (reportId === "pharmacy-outstanding") {
+      const patients = await this.db
+        .select({
+          label: pharmacyPatients.name,
+          amount: pharmacyPatients.outstandingPkr,
+          meta: sql<string>`'patient'`,
+        })
+        .from(pharmacyPatients)
+        .where(
+          and(
+            eq(pharmacyPatients.organizationId, organizationId),
+            eq(pharmacyPatients.branchId, branchId),
+            sql`${pharmacyPatients.outstandingPkr} > 0`,
+          ),
+        )
+        .limit(200);
+      const trade = await this.db
+        .select({
+          label: pharmacyTradeCustomers.name,
+          amount: pharmacyTradeCustomers.outstandingPkr,
+          meta: sql<string>`'trade'`,
+        })
+        .from(pharmacyTradeCustomers)
+        .where(
+          and(eq(pharmacyTradeCustomers.organizationId, organizationId), sql`${pharmacyTradeCustomers.outstandingPkr} > 0`),
+        )
+        .limit(200);
+      const rows = [...patients, ...trade];
+      return { ...base, rows, empty: rows.length === 0 };
+    }
+
+    if (reportId === "distribution-orders") {
+      const rows = await this.db
+        .select({
+          label: pharmacyDistOrders.orderNumber,
+          amount: pharmacyDistOrders.totalPkr,
+          meta: pharmacyDistOrders.status,
+        })
+        .from(pharmacyDistOrders)
+        .where(
+          and(
+            eq(pharmacyDistOrders.organizationId, organizationId),
+            eq(pharmacyDistOrders.branchId, branchId),
+            gte(pharmacyDistOrders.createdAt, fromDt),
+            lte(pharmacyDistOrders.createdAt, toDt),
+          ),
+        )
+        .orderBy(desc(pharmacyDistOrders.createdAt))
+        .limit(500);
+      return { ...base, rows, empty: rows.length === 0 };
+    }
+
+    if (reportId === "distribution-collections") {
+      const rows = await this.db
+        .select({
+          label: pharmacyCollections.collectionNumber,
+          amount: pharmacyCollections.amountPkr,
+          meta: pharmacyCollections.paymentMethod,
+        })
+        .from(pharmacyCollections)
+        .where(
+          and(
+            eq(pharmacyCollections.organizationId, organizationId),
+            eq(pharmacyCollections.branchId, branchId),
+            gte(pharmacyCollections.createdAt, fromDt),
+            lte(pharmacyCollections.createdAt, toDt),
+          ),
+        )
+        .orderBy(desc(pharmacyCollections.createdAt))
+        .limit(500);
+      return { ...base, rows, empty: rows.length === 0 };
+    }
+
+    if (reportId === "distribution-salesman") {
+      const rows = await this.db
+        .select({
+          label: pharmacyAssignments.employeeId,
+          qty: sql<number>`count(*)`,
+          meta: pharmacyAssignments.status,
+        })
+        .from(pharmacyAssignments)
+        .where(
+          and(
+            eq(pharmacyAssignments.organizationId, organizationId),
+            gte(pharmacyAssignments.assignmentDate, from),
+            lte(pharmacyAssignments.assignmentDate, to),
+          ),
+        )
+        .groupBy(pharmacyAssignments.employeeId, pharmacyAssignments.status)
+        .limit(200);
+      return { ...base, rows, empty: rows.length === 0 };
+    }
+
+    throw new NotFoundException(`Unknown pharmacy report: ${reportId}`);
   }
 
   private normalizeTime(value: string | undefined, fallback: string): string {

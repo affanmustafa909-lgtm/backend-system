@@ -19,9 +19,17 @@ export const pharmacyMedicines = pgTable("pharmacy_medicines", {
   brandName: text("brand_name"),
   category: text("category").notNull().default("Tablet"),
   manufacturer: text("manufacturer"),
+  /** Optional FK to pharmacy_companies — set after companies table exists via app layer. */
+  companyId: uuid("company_id"),
   barcode: text("barcode"),
+  alternateBarcode: text("alternate_barcode"),
   purchasePricePkr: integer("purchase_price_pkr").notNull().default(0),
+  costPricePkr: integer("cost_price_pkr").notNull().default(0),
   sellingPricePkr: integer("selling_price_pkr").notNull().default(0),
+  wholesalePricePkr: integer("wholesale_price_pkr").notNull().default(0),
+  dealerPricePkr: integer("dealer_price_pkr").notNull().default(0),
+  minSalePricePkr: integer("min_sale_price_pkr").notNull().default(0),
+  maxRetailPricePkr: integer("max_retail_price_pkr").notNull().default(0),
   taxPct: integer("tax_pct").notNull().default(0),
   reorderLevel: integer("reorder_level").notNull().default(10),
   suggestedReorderQty: integer("suggested_reorder_qty").notNull().default(0),
@@ -30,11 +38,14 @@ export const pharmacyMedicines = pgTable("pharmacy_medicines", {
   rackLocation: text("rack_location"),
   shelfLocation: text("shelf_location"),
   aisleLocation: text("aisle_location"),
+  preferredWarehouseId: uuid("preferred_warehouse_id"),
   /** Stock is tracked in tablets (base unit) when pack fields are set. */
   tabletsPerStrip: integer("tablets_per_strip").notNull().default(1),
   stripsPerBox: integer("strips_per_box").notNull().default(1),
   /** sellingPricePkr is the price per strip when tabletsPerStrip > 1, else per piece. */
   isControlled: boolean("is_controlled").notNull().default(false),
+  prescriptionRequired: boolean("prescription_required").notNull().default(false),
+  status: text("status").notNull().default("active"),
   warningsJson: text("warnings_json"),
   instructionsJson: text("instructions_json"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -45,10 +56,18 @@ export const pharmacyMedicineBatches = pgTable("pharmacy_medicine_batches", {
   medicineId: uuid("medicine_id")
     .notNull()
     .references(() => pharmacyMedicines.id, { onDelete: "cascade" }),
+  warehouseId: uuid("warehouse_id"),
   batchNumber: text("batch_number").notNull(),
   manufacturingDate: date("manufacturing_date"),
   expiryDate: date("expiry_date").notNull(),
+  /** Available quantity in base units (tablets). */
   quantity: integer("quantity").notNull().default(0),
+  reservedQuantity: integer("reserved_quantity").notNull().default(0),
+  damagedQuantity: integer("damaged_quantity").notNull().default(0),
+  freeQuantity: integer("free_quantity").notNull().default(0),
+  purchaseRatePkr: integer("purchase_rate_pkr").notNull().default(0),
+  saleRatePkr: integer("sale_rate_pkr").notNull().default(0),
+  status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

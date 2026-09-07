@@ -187,6 +187,182 @@ export class AccountingHooksService {
     }
   }
 
+  async recordSaleFromPharmacySale(
+    organizationId: string,
+    branchId: string,
+    sale: {
+      invoiceNumber: string;
+      subtotalPkr: number;
+      discountPkr: number;
+      taxPkr: number;
+      totalPkr: number;
+      amountPaidPkr: number;
+      amountDuePkr: number;
+      paymentsJson?: string | null;
+      paymentMethod: string;
+      createdAt: Date | string;
+    },
+  ): Promise<void> {
+    const existing = await this.db
+      .select({ id: popsJournalEntries.id })
+      .from(popsJournalEntries)
+      .where(
+        and(
+          eq(popsJournalEntries.organizationId, organizationId),
+          eq(popsJournalEntries.source, "pharmacy_sale"),
+          eq(popsJournalEntries.sourceRef, sale.invoiceNumber),
+        ),
+      )
+      .limit(1);
+    if (existing.length > 0) return;
+
+    let payments: { method: string; amount: number }[] = [];
+    if (sale.paymentsJson) {
+      try {
+        payments = JSON.parse(sale.paymentsJson) as { method: string; amount: number }[];
+      } catch {
+        payments = [];
+      }
+    }
+    if (payments.length === 0 && sale.amountPaidPkr > 0) {
+      payments = [{ method: sale.paymentMethod, amount: sale.amountPaidPkr }];
+    }
+
+    const lines: JournalLineInput[] = [];
+    for (const p of payments) {
+      if (p.amount <= 0 || p.method === "Khata") continue;
+      const method = p.method.toLowerCase();
+      const code =
+        method.includes("card") || method.includes("bank") || method.includes("jazz") || method.includes("easy")
+          ? "1102"
+          : "1101";
+      lines.push({ accountCode: code, debit: p.amount, credit: 0, memo: `${p.method} payment` });
+    }
+    if (sale.amountDuePkr > 0) {
+      lines.push({ accountCode: "1301", debit: sale.amountDuePkr, credit: 0, memo: "Accounts receivable" });
+    }
+
+    const netSales = Math.max(0, sale.subtotalPkr - sale.discountPkr);
+    if (netSales > 0 || sale.subtotalPkr > 0) {
+      lines.push({
+        accountCode: "4110",
+        debit: 0,
+        credit: sale.subtotalPkr,
+        memo: "Pharmacy sales",
+      });
+    }
+    if (sale.discountPkr > 0) {
+      lines.push({ accountCode: "4105", debit: sale.discountPkr, credit: 0, memo: "Sales discount" });
+    }
+    if (sale.taxPkr > 0) {
+      lines.push({ accountCode: "2201", debit: 0, credit: sale.taxPkr, memo: "Tax collected" });
+    }
+
+    const entryDate =
+      typeof sale.createdAt === "string"
+        ? sale.createdAt.slice(0, 10)
+        : sale.createdAt.toISOString().slice(0, 10);
+
+    await this.postEntry(organizationId, branchId, {
+      entryRef: `JV-PH-SALE-${sale.invoiceNumber}`,
+      entryDate,
+      source: "pharmacy_sale",
+      sourceRef: sale.invoiceNumber,
+      description: `Pharmacy sale ${sale.invoiceNumber}`,
+      createdBy: "pharmacy",
+      lines,
+    });
+  }
+
+  async recordPurchaseFromPharmacyGrn(
+    organizationId: string,
+    branchId: string,
+    grn: { grnNumber: string; totalPkr: number; createdAt: Date | string },
+  ): Promise<void> {
+    if (grn.totalPkr <= 0) return;
+    const existing = await this.db
+      .select({ id: popsJournalEntries.id })
+      .from(popsJournalEntries)
+      .where(
+        and(
+          eq(popsJournalEntries.organizationId, organizationId),
+          eq(popsJournalEntries.source, "pharmacy_purchase"),
+          eq(popsJournalEntries.sourceRef, grn.grnNumber),
+        ),
+      )
+      .limit(1);
+    if (existing.length > 0) return;
+
+    const entryDate =
+      typeof grn.createdAt === "string" ? grn.createdAt.slice(0, 10) : grn.createdAt.toISOString().slice(0, 10);
+
+    await this.postEntry(organizationId, branchId, {
+      entryRef: `JV-PH-GRN-${grn.grnNumber}`,
+      entryDate,
+      source: "pharmacy_purchase",
+      sourceRef: grn.grnNumber,
+      description: `Pharmacy GRN ${grn.grnNumber}`,
+      createdBy: "pharmacy",
+      lines: [
+        { accountCode: "1201", debit: grn.totalPkr, credit: 0, memo: "Inventory received" },
+        { accountCode: "2101", debit: 0, credit: grn.totalPkr, memo: "Accounts payable" },
+      ],
+    });
+  }
+
+  async recordPharmacySaleReturn(
+    organizationId: string,
+    branchId: string,
+    ret: {
+      returnNumber: string;
+      subtotalPkr: number;
+      taxPkr: number;
+      totalPkr: number;
+      refundMethod?: string;
+      createdAt: Date | string;
+    },
+  ): Promise<void> {
+    if (ret.totalPkr <= 0) return;
+    const existing = await this.db
+      .select({ id: popsJournalEntries.id })
+      .from(popsJournalEntries)
+      .where(
+        and(
+          eq(popsJournalEntries.organizationId, organizationId),
+          eq(popsJournalEntries.source, "pharmacy_sale_return"),
+          eq(popsJournalEntries.sourceRef, ret.returnNumber),
+        ),
+      )
+      .limit(1);
+    if (existing.length > 0) return;
+
+    const method = (ret.refundMethod ?? "Cash").toLowerCase();
+    const cashOrBank =
+      method.includes("card") || method.includes("bank") || method.includes("jazz") || method.includes("easy")
+        ? "1102"
+        : "1101";
+    const entryDate =
+      typeof ret.createdAt === "string" ? ret.createdAt.slice(0, 10) : ret.createdAt.toISOString().slice(0, 10);
+
+    const lines: JournalLineInput[] = [
+      { accountCode: "4110", debit: ret.subtotalPkr, credit: 0, memo: "Pharmacy sales return" },
+      { accountCode: cashOrBank, debit: 0, credit: ret.totalPkr, memo: "Refund" },
+    ];
+    if (ret.taxPkr > 0) {
+      lines.push({ accountCode: "2201", debit: ret.taxPkr, credit: 0, memo: "Tax reversal" });
+    }
+
+    await this.postEntry(organizationId, branchId, {
+      entryRef: `JV-PH-RET-${ret.returnNumber}`,
+      entryDate,
+      source: "pharmacy_sale_return",
+      sourceRef: ret.returnNumber,
+      description: `Pharmacy sale return ${ret.returnNumber}`,
+      createdBy: "pharmacy",
+      lines,
+    });
+  }
+
   async recordStockAdjustment(
     organizationId: string,
     branchId: string,

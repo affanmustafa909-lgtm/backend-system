@@ -21,7 +21,13 @@ export const MEDICINE_CATEGORIES = [
 ] as const;
 export const medicineCategorySchema = z.enum(MEDICINE_CATEGORIES);
 
-export const PRESCRIPTION_STATUSES = ["Pending", "Verified", "Dispensed", "Cancelled"] as const;
+export const PRESCRIPTION_STATUSES = [
+  "Pending",
+  "Verified",
+  "Partially Dispensed",
+  "Dispensed",
+  "Cancelled",
+] as const;
 export const prescriptionStatusSchema = z.enum(PRESCRIPTION_STATUSES);
 
 export const PHARMACY_PAYMENT_METHODS = [
@@ -214,6 +220,8 @@ export const pharmacySaleSchema = z.object({
   invoiceNumber: z.string(),
   patientId: z.string().uuid().nullable(),
   patientName: z.string().nullable(),
+  prescriptionId: z.string().uuid().nullable().optional(),
+  shiftId: z.string().uuid().nullable().optional(),
   paymentMethod: pharmacyPaymentMethodSchema,
   payments: z.array(pharmacyPaymentLineSchema),
   amountPaid: z.number(),
@@ -465,6 +473,206 @@ export type CreatePharmacySale = z.infer<typeof createPharmacySaleSchema>;
 export type OpenPharmacyShift = z.infer<typeof openPharmacyShiftSchema>;
 export type ClosePharmacyShift = z.infer<typeof closePharmacyShiftSchema>;
 export type RecordKhataPayment = z.infer<typeof recordKhataPaymentSchema>;
+
+export const FIELD_ROLES = ["Salesman", "MR", "SW", "SNO", "ASM", "RSM", "NSM"] as const;
+export const fieldRoleSchema = z.enum(FIELD_ROLES);
+
+export const pharmacyCompanySchema = z.object({
+  id: z.string().uuid(),
+  code: z.string(),
+  name: z.string(),
+  manufacturerName: z.string().nullable().optional(),
+  contactPerson: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  status: z.string(),
+});
+
+export const createPharmacyCompanySchema = z.object({
+  code: z.string().min(1),
+  name: z.string().min(1),
+  manufacturerName: z.string().optional(),
+  contactPerson: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().optional(),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  country: z.string().optional(),
+  licenseInfo: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const pharmacyWarehouseSchema = z.object({
+  id: z.string().uuid(),
+  branchId: z.string().uuid(),
+  code: z.string(),
+  name: z.string(),
+  address: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  isDefault: z.boolean(),
+  status: z.string(),
+});
+
+export const createPharmacyWarehouseSchema = z.object({
+  branchCode: z.string().min(1),
+  code: z.string().min(1),
+  name: z.string().min(1),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  area: z.string().optional(),
+  managerName: z.string().optional(),
+  isDefault: z.boolean().optional(),
+});
+
+export const pharmacyTradeCustomerSchema = z.object({
+  id: z.string().uuid(),
+  code: z.string(),
+  name: z.string(),
+  businessName: z.string().nullable().optional(),
+  customerType: z.string(),
+  phone: z.string().nullable().optional(),
+  creditLimitPkr: z.number(),
+  outstandingPkr: z.number(),
+  priceLevel: z.string(),
+  status: z.string(),
+});
+
+export const createPharmacyTradeCustomerSchema = z.object({
+  branchCode: z.string().optional(),
+  code: z.string().min(1),
+  name: z.string().min(1),
+  businessName: z.string().optional(),
+  customerType: z.string().optional(),
+  phone: z.string().optional(),
+  whatsapp: z.string().optional(),
+  email: z.string().optional(),
+  address: z.string().optional(),
+  cityId: z.string().uuid().optional(),
+  areaId: z.string().uuid().optional(),
+  territoryId: z.string().uuid().optional(),
+  routeId: z.string().uuid().optional(),
+  salesmanEmployeeId: z.string().uuid().optional(),
+  creditLimitPkr: z.number().min(0).optional(),
+  creditDays: z.number().min(0).optional(),
+  openingBalancePkr: z.number().min(0).optional(),
+  priceLevel: z.string().optional(),
+  discountPct: z.number().min(0).optional(),
+  taxInfo: z.string().optional(),
+});
+
+export const createPharmacyPurchaseOrderSchema = z.object({
+  branchCode: z.string().min(1),
+  supplierId: z.string().uuid().optional(),
+  orderDate: z.string().optional(),
+  expectedDate: z.string().optional(),
+  notes: z.string().optional(),
+  taxPkr: z.number().min(0).optional(),
+  discountPkr: z.number().min(0).optional(),
+  lines: z
+    .array(
+      z.object({
+        medicineId: z.string().uuid(),
+        quantity: z.number().min(1),
+        freeQuantity: z.number().min(0).optional(),
+        unitCostPkr: z.number().min(0).default(0),
+      }),
+    )
+    .min(1),
+});
+
+export const createPharmacyGrnSchema = z.object({
+  branchCode: z.string().min(1),
+  warehouseId: z.string().uuid().optional(),
+  purchaseOrderId: z.string().uuid().optional(),
+  supplierId: z.string().uuid().optional(),
+  supplierInvoiceNumber: z.string().optional(),
+  receivedDate: z.string().optional(),
+  notes: z.string().optional(),
+  lines: z
+    .array(
+      z.object({
+        medicineId: z.string().uuid(),
+        batchNumber: z.string().min(1),
+        manufacturingDate: z.string().optional(),
+        expiryDate: z.string().min(1),
+        quantity: z.number().min(1),
+        freeQuantity: z.number().min(0).optional(),
+        unitCostPkr: z.number().min(0).default(0),
+        purchaseOrderLineId: z.string().uuid().optional(),
+      }),
+    )
+    .min(1),
+});
+
+export const createPharmacySaleReturnSchema = z.object({
+  branchCode: z.string().min(1),
+  originalSaleId: z.string().uuid(),
+  reason: z.string().optional(),
+  refundMethod: pharmacyPaymentMethodSchema.optional(),
+  lines: z
+    .array(
+      z.object({
+        medicineId: z.string().uuid(),
+        batchId: z.string().uuid().optional(),
+        qty: z.number().min(1),
+        tabletsQty: z.number().min(0).optional(),
+        unitPricePkr: z.number().min(0).optional(),
+      }),
+    )
+    .min(1),
+});
+
+export const createPharmacyDistOrderSchema = z.object({
+  branchCode: z.string().min(1),
+  warehouseId: z.string().uuid().optional(),
+  tradeCustomerId: z.string().uuid(),
+  salesmanEmployeeId: z.string().uuid().optional(),
+  creditOverride: z.boolean().optional(),
+  notes: z.string().optional(),
+  discountPkr: z.number().min(0).optional(),
+  taxPkr: z.number().min(0).optional(),
+  submit: z.boolean().optional(),
+  lines: z
+    .array(
+      z.object({
+        medicineId: z.string().uuid(),
+        quantity: z.number().min(1),
+        freeQuantity: z.number().min(0).optional(),
+        unitPricePkr: z.number().min(0).optional(),
+        discountPkr: z.number().min(0).optional(),
+      }),
+    )
+    .min(1),
+});
+
+export const resolvePharmacyPriceSchema = z.object({
+  medicineId: z.string().uuid(),
+  tradeCustomerId: z.string().uuid().optional(),
+  priceLevel: z.string().optional(),
+  qty: z.number().min(1).optional(),
+});
+
+export const pharmacyResolvedPriceSchema = z.object({
+  medicineId: z.string().uuid(),
+  unitPricePkr: z.number(),
+  source: z.string(),
+  priceListId: z.string().uuid().nullable().optional(),
+});
+
+export type PharmacyCompany = z.infer<typeof pharmacyCompanySchema>;
+export type CreatePharmacyCompany = z.infer<typeof createPharmacyCompanySchema>;
+export type PharmacyWarehouse = z.infer<typeof pharmacyWarehouseSchema>;
+export type CreatePharmacyWarehouse = z.infer<typeof createPharmacyWarehouseSchema>;
+export type PharmacyTradeCustomer = z.infer<typeof pharmacyTradeCustomerSchema>;
+export type CreatePharmacyTradeCustomer = z.infer<typeof createPharmacyTradeCustomerSchema>;
+export type CreatePharmacyPurchaseOrder = z.infer<typeof createPharmacyPurchaseOrderSchema>;
+export type CreatePharmacyGrn = z.infer<typeof createPharmacyGrnSchema>;
+export type CreatePharmacySaleReturn = z.infer<typeof createPharmacySaleReturnSchema>;
+export type CreatePharmacyDistOrder = z.infer<typeof createPharmacyDistOrderSchema>;
+export type ResolvePharmacyPrice = z.infer<typeof resolvePharmacyPriceSchema>;
+export type PharmacyResolvedPrice = z.infer<typeof pharmacyResolvedPriceSchema>;
 
 export const pharmacyPurchaseLineSchema = z.object({
   poNumber: z.string(),

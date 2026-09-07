@@ -17,6 +17,7 @@ export * from "./org-alerts";
 export * from "./platform-settings";
 export * from "./closing";
 export * from "./pharmacy";
+export * from "./pharmacy-erp";
 export * from "./store";
 export * from "./security";
 export * from "./refresh-tokens";

@@ -12,6 +12,8 @@ export const DEFAULT_CHART = [
   { code: "4103", name: "Delivery Revenue", type: "income", subtype: "sales" },
   { code: "4104", name: "Service Charges", type: "income", subtype: "sales" },
   { code: "4105", name: "Sales Discounts", type: "expense", subtype: "contra" },
+  { code: "4110", name: "Pharmacy Sales", type: "income", subtype: "sales" },
+  { code: "4111", name: "Wholesale Sales", type: "income", subtype: "sales" },
   { code: "5101", name: "Cost of Goods Sold", type: "expense", subtype: "cogs" },
   { code: "5201", name: "Food Purchases", type: "expense", subtype: "purchase" },
   { code: "5202", name: "Utility Bills", type: "expense", subtype: "operating" },
@@ -20,5 +22,6 @@ export const DEFAULT_CHART = [
   { code: "5205", name: "Marketing", type: "expense", subtype: "operating" },
   { code: "5206", name: "Maintenance", type: "expense", subtype: "operating" },
   { code: "5207", name: "Waste & Spoilage", type: "expense", subtype: "inventory" },
+  { code: "5208", name: "Pharmacy Purchases", type: "expense", subtype: "purchase" },
   { code: "3001", name: "Owner Equity", type: "equity", subtype: "equity" },
 ] as const;

@@ -38,6 +38,20 @@ export const RESTAURANT_REPORT_DEFS = [
 export type RestaurantReportId = (typeof RESTAURANT_REPORT_DEFS)[number]["id"];
 export type RestaurantReportCategory = (typeof RESTAURANT_REPORT_DEFS)[number]["category"];
 
+/** Pharmacy + distribution report catalog entries (shared report engine). */
+export const PHARMACY_REPORT_DEFS = [
+  { id: "pharmacy-daily-sales", name: "Pharmacy daily sales", category: "Pharmacy" },
+  { id: "pharmacy-product-sales", name: "Pharmacy product sales", category: "Pharmacy" },
+  { id: "pharmacy-stock", name: "Pharmacy stock", category: "Inventory" },
+  { id: "pharmacy-expiry", name: "Pharmacy near expiry", category: "Inventory" },
+  { id: "pharmacy-outstanding", name: "Patient / trade outstanding", category: "Receivables" },
+  { id: "distribution-orders", name: "Distribution orders", category: "Distribution" },
+  { id: "distribution-collections", name: "Distribution collections", category: "Collection" },
+  { id: "distribution-salesman", name: "Salesman / MR performance", category: "Sales Force" },
+] as const;
+
+export type PharmacyReportId = (typeof PHARMACY_REPORT_DEFS)[number]["id"];
+
 export const restaurantReportRowSchema = z.object({
   label: z.string(),
   qty: z.number().optional(),
