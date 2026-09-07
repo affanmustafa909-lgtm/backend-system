@@ -22,19 +22,29 @@ import type {
 import { computeLinePrice, formatMedicineLocation, saleQtyToTablets } from "@platform/contracts";
 import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
 import {
+  pharmacyCollections,
   pharmacyControlledDrugLogs,
+  pharmacyDistInvoices,
+  pharmacyDistOrders,
   pharmacyDoctors,
+  pharmacyGrns,
   pharmacyKhataEntries,
   pharmacyMedicineBatches,
   pharmacyMedicines,
   pharmacyPatients,
   pharmacyPrescriptionItems,
   pharmacyPrescriptions,
+  pharmacyPurchaseOrders,
+  pharmacyPurchaseReturns,
   pharmacyRefillReminders,
   pharmacySaleLines,
+  pharmacySaleReturns,
   pharmacySales,
   pharmacyShifts,
+  pharmacyTradeCustomers,
+  popsBankAccounts,
   popsBranches,
+  popsExpenses,
   popsPurchaseOrders,
   popsSuppliers,
   users,
@@ -257,6 +267,7 @@ export class PharmacyService implements OnModuleInit {
       {
         organizationId,
         branchId,
+        code: "PAT-000001",
         name: "Ali Hassan",
         phone: "+92 300 1234567",
         email: "ali@example.com",
@@ -270,6 +281,7 @@ export class PharmacyService implements OnModuleInit {
       {
         organizationId,
         branchId,
+        code: "PAT-000002",
         name: "Fatima Khan",
         phone: "+92 321 9876543",
         email: "fatima@example.com",
@@ -286,16 +298,20 @@ export class PharmacyService implements OnModuleInit {
       {
         organizationId,
         branchId,
+        code: "DOC-000001",
         name: "Dr. Ahmed Malik",
         specialization: "General Physician",
+        registrationNumber: "PMC-12345",
         clinic: "City Clinic F-8",
         phone: "+92 51 2345678",
       },
       {
         organizationId,
         branchId,
+        code: "DOC-000002",
         name: "Dr. Sana Iqbal",
         specialization: "Pediatrician",
+        registrationNumber: "PMC-67890",
         clinic: "Children's Hospital",
         phone: "+92 51 8765432",
       },
@@ -606,16 +622,497 @@ export class PharmacyService implements OnModuleInit {
 
     const transactionCountToday = recentSales.filter((s) => s.createdAt >= todayStart).length;
 
+    const totalSalesTodayNum = Number(salesToday[0]?.total ?? 0);
+    const pendingRxCount = Number(pendingRx[0]?.count ?? 0);
+    const patientCount = Number(patients[0]?.count ?? 0);
+
+    let outOfStockCount = stockOut;
+    let expiredCount = 0;
+    let nearExpiryCount = 0;
+    const in90 = new Date(now);
+    in90.setDate(in90.getDate() + 90);
+    const in90Str = in90.toISOString().slice(0, 10);
+    for (const b of batches) {
+      if (b.quantity <= 0) continue;
+      const exp = String(b.expiryDate);
+      if (exp <= today) expiredCount += 1;
+      else if (exp <= in90Str) nearExpiryCount += 1;
+    }
+
+    const totalStockValue = medicines.reduce((s, m) => s + m.currentStock * m.purchasePricePkr, 0);
+    const grossProfit = revenueMonth - cogsMonth;
+    const netProfit = profitMonth;
+    const totalProfit = grossProfit;
+
+    const slowMovingMedicines = [...topMap.values()].sort((a, b) => a.qty - b.qty).slice(0, 6);
+
+    const num = (v: unknown) => Number(v ?? 0);
+    const safe = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await fn();
+      } catch (err) {
+        this.logger.warn(`Dashboard optional query skipped: ${err instanceof Error ? err.message : String(err)}`);
+        return fallback;
+      }
+    };
+
+    const allTimeSales = await safe(
+      async () => {
+        const [row] = await this.db
+          .select({ total: sql<number>`coalesce(sum(${pharmacySales.totalPkr}), 0)` })
+          .from(pharmacySales)
+          .where(and(eq(pharmacySales.organizationId, organizationId), eq(pharmacySales.branchId, branch.id)));
+        return num(row?.total);
+      },
+      totalSalesTodayNum,
+    );
+
+    const pharmacyPoTotal = await safe(async () => {
+      const [row] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${pharmacyPurchaseOrders.totalPkr}), 0)` })
+        .from(pharmacyPurchaseOrders)
+        .where(
+          and(
+            eq(pharmacyPurchaseOrders.organizationId, organizationId),
+            eq(pharmacyPurchaseOrders.branchId, branch.id),
+          ),
+        );
+      return num(row?.total);
+    }, 0);
+
+    const grnTotal = await safe(async () => {
+      const [row] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${pharmacyGrns.totalPkr}), 0)` })
+        .from(pharmacyGrns)
+        .where(and(eq(pharmacyGrns.organizationId, organizationId), eq(pharmacyGrns.branchId, branch.id)));
+      return num(row?.total);
+    }, 0);
+
+    const popsPoAllTime = await safe(async () => {
+      const [row] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${popsPurchaseOrders.totalAmountPkr}), 0)` })
+        .from(popsPurchaseOrders)
+        .where(
+          and(eq(popsPurchaseOrders.organizationId, organizationId), eq(popsPurchaseOrders.branchId, branch.id)),
+        );
+      return num(row?.total);
+    }, 0);
+
+    const totalPurchases = pharmacyPoTotal > 0 ? pharmacyPoTotal : grnTotal > 0 ? grnTotal : popsPoAllTime;
+
+    const todayPurchases = await safe(async () => {
+      const [grnRow] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${pharmacyGrns.totalPkr}), 0)` })
+        .from(pharmacyGrns)
+        .where(
+          and(
+            eq(pharmacyGrns.organizationId, organizationId),
+            eq(pharmacyGrns.branchId, branch.id),
+            gte(pharmacyGrns.createdAt, todayStart),
+          ),
+        );
+      const grnToday = num(grnRow?.total);
+      if (grnToday > 0) return grnToday;
+      const [poRow] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${pharmacyPurchaseOrders.totalPkr}), 0)` })
+        .from(pharmacyPurchaseOrders)
+        .where(
+          and(
+            eq(pharmacyPurchaseOrders.organizationId, organizationId),
+            eq(pharmacyPurchaseOrders.branchId, branch.id),
+            gte(pharmacyPurchaseOrders.createdAt, todayStart),
+          ),
+        );
+      const poToday = num(poRow?.total);
+      if (poToday > 0) return poToday;
+      const [popsRow] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${popsPurchaseOrders.totalAmountPkr}), 0)` })
+        .from(popsPurchaseOrders)
+        .where(
+          and(
+            eq(popsPurchaseOrders.organizationId, organizationId),
+            eq(popsPurchaseOrders.branchId, branch.id),
+            gte(popsPurchaseOrders.createdAt, todayStart),
+          ),
+        );
+      return num(popsRow?.total);
+    }, 0);
+
+    const todayExpenses = await safe(async () => {
+      const [row] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${popsExpenses.amountPkr}), 0)` })
+        .from(popsExpenses)
+        .where(
+          and(
+            eq(popsExpenses.organizationId, organizationId),
+            eq(popsExpenses.branchId, branch.id),
+            gte(popsExpenses.expenseDate, today),
+            lte(popsExpenses.expenseDate, today),
+          ),
+        );
+      return num(row?.total);
+    }, 0);
+
+    const todayCollections = await safe(async () => {
+      const [row] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${pharmacyCollections.amountPkr}), 0)` })
+        .from(pharmacyCollections)
+        .where(
+          and(
+            eq(pharmacyCollections.organizationId, organizationId),
+            eq(pharmacyCollections.branchId, branch.id),
+            gte(pharmacyCollections.createdAt, todayStart),
+          ),
+        );
+      return num(row?.total);
+    }, 0);
+
+    const todayPayments = await safe(async () => {
+      const [row] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${pharmacyKhataEntries.amountPkr}), 0)` })
+        .from(pharmacyKhataEntries)
+        .innerJoin(pharmacyPatients, eq(pharmacyPatients.id, pharmacyKhataEntries.patientId))
+        .where(
+          and(
+            eq(pharmacyPatients.organizationId, organizationId),
+            eq(pharmacyPatients.branchId, branch.id),
+            eq(pharmacyKhataEntries.type, "payment"),
+            gte(pharmacyKhataEntries.createdAt, todayStart),
+          ),
+        );
+      return num(row?.total);
+    }, 0);
+
+    const cashInHand = await safe(async () => {
+      const [openShift] = await this.db
+        .select()
+        .from(pharmacyShifts)
+        .where(
+          and(
+            eq(pharmacyShifts.organizationId, organizationId),
+            eq(pharmacyShifts.branchId, branch.id),
+            eq(pharmacyShifts.status, "open"),
+          ),
+        )
+        .orderBy(desc(pharmacyShifts.openedAt))
+        .limit(1);
+      if (openShift) {
+        if (openShift.expectedCashPkr != null) return openShift.expectedCashPkr;
+        const cashSales = recentSales
+          .filter((s) => s.createdAt >= todayStart && (s.paymentMethod === "Cash" || s.paymentMethod === "Mixed"))
+          .reduce((sum, s) => {
+            if (s.paymentMethod === "Cash") return sum + s.totalPkr;
+            const payments = parsePaymentsJson(s.paymentsJson);
+            return sum + payments.filter((p) => p.method === "Cash").reduce((a, p) => a + p.amount, 0);
+          }, 0);
+        return openShift.openingCashPkr + cashSales;
+      }
+      return 0;
+    }, 0);
+
+    const bankBalance = await safe(async () => {
+      const [row] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${popsBankAccounts.balancePkr}), 0)` })
+        .from(popsBankAccounts)
+        .where(
+          and(
+            eq(popsBankAccounts.organizationId, organizationId),
+            eq(popsBankAccounts.branchId, branch.id),
+            eq(popsBankAccounts.active, true),
+          ),
+        );
+      return num(row?.total);
+    }, 0);
+
+    const patientReceivables = await safe(async () => {
+      const [row] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${pharmacyPatients.outstandingPkr}), 0)` })
+        .from(pharmacyPatients)
+        .where(and(eq(pharmacyPatients.organizationId, organizationId), eq(pharmacyPatients.branchId, branch.id)));
+      return num(row?.total);
+    }, 0);
+
+    const tradeReceivables = await safe(async () => {
+      const [row] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${pharmacyTradeCustomers.outstandingPkr}), 0)` })
+        .from(pharmacyTradeCustomers)
+        .where(
+          and(
+            eq(pharmacyTradeCustomers.organizationId, organizationId),
+            eq(pharmacyTradeCustomers.branchId, branch.id),
+          ),
+        );
+      return num(row?.total);
+    }, 0);
+
+    const customerReceivables = patientReceivables + tradeReceivables;
+
+    const supplierPayables = await safe(async () => {
+      const [unpaidPo] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${pharmacyPurchaseOrders.totalPkr}), 0)` })
+        .from(pharmacyPurchaseOrders)
+        .where(
+          and(
+            eq(pharmacyPurchaseOrders.organizationId, organizationId),
+            eq(pharmacyPurchaseOrders.branchId, branch.id),
+            inArray(pharmacyPurchaseOrders.status, ["draft", "approved", "ordered", "partial"]),
+          ),
+        );
+      const unpaid = num(unpaidPo?.total);
+      if (unpaid > 0) return unpaid;
+      const [sup] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${popsSuppliers.openingBalancePkr}), 0)` })
+        .from(popsSuppliers)
+        .where(and(eq(popsSuppliers.organizationId, organizationId), eq(popsSuppliers.branchId, branch.id)));
+      return num(sup?.total);
+    }, 0);
+
+    const tradeCustomerCount = await safe(async () => {
+      const [row] = await this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(pharmacyTradeCustomers)
+        .where(
+          and(
+            eq(pharmacyTradeCustomers.organizationId, organizationId),
+            eq(pharmacyTradeCustomers.branchId, branch.id),
+          ),
+        );
+      return num(row?.count);
+    }, 0);
+
+    const totalSuppliers = await safe(async () => {
+      const [row] = await this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(popsSuppliers)
+        .where(and(eq(popsSuppliers.organizationId, organizationId), eq(popsSuppliers.branchId, branch.id)));
+      return num(row?.count);
+    }, 0);
+
+    const pendingCustomerPayments = await safe(async () => {
+      const [patientsDue] = await this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(pharmacyPatients)
+        .where(
+          and(
+            eq(pharmacyPatients.organizationId, organizationId),
+            eq(pharmacyPatients.branchId, branch.id),
+            sql`${pharmacyPatients.outstandingPkr} > 0`,
+          ),
+        );
+      const [tradeDue] = await this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(pharmacyTradeCustomers)
+        .where(
+          and(
+            eq(pharmacyTradeCustomers.organizationId, organizationId),
+            eq(pharmacyTradeCustomers.branchId, branch.id),
+            sql`${pharmacyTradeCustomers.outstandingPkr} > 0`,
+          ),
+        );
+      return num(patientsDue?.count) + num(tradeDue?.count);
+    }, 0);
+
+    const pendingSupplierPayments = await safe(async () => {
+      const [row] = await this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(pharmacyPurchaseOrders)
+        .where(
+          and(
+            eq(pharmacyPurchaseOrders.organizationId, organizationId),
+            eq(pharmacyPurchaseOrders.branchId, branch.id),
+            inArray(pharmacyPurchaseOrders.status, ["draft", "approved", "ordered", "partial"]),
+          ),
+        );
+      return num(row?.count);
+    }, 0);
+
+    const pendingDistOrders = await safe(async () => {
+      const [row] = await this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(pharmacyDistOrders)
+        .where(
+          and(
+            eq(pharmacyDistOrders.organizationId, organizationId),
+            eq(pharmacyDistOrders.branchId, branch.id),
+            inArray(pharmacyDistOrders.status, ["draft", "submitted", "approved", "pending"]),
+          ),
+        );
+      return num(row?.count);
+    }, 0);
+
+    const pendingOrdersTotal = pendingRxCount + pendingDistOrders;
+
+    const salesReturnTotal = await safe(async () => {
+      const [row] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${pharmacySaleReturns.totalPkr}), 0)` })
+        .from(pharmacySaleReturns)
+        .where(
+          and(
+            eq(pharmacySaleReturns.organizationId, organizationId),
+            eq(pharmacySaleReturns.branchId, branch.id),
+            gte(pharmacySaleReturns.createdAt, monthStart),
+          ),
+        );
+      return num(row?.total);
+    }, 0);
+
+    const purchaseReturnTotal = await safe(async () => {
+      const [row] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${pharmacyPurchaseReturns.totalPkr}), 0)` })
+        .from(pharmacyPurchaseReturns)
+        .where(
+          and(
+            eq(pharmacyPurchaseReturns.organizationId, organizationId),
+            eq(pharmacyPurchaseReturns.branchId, branch.id),
+            gte(pharmacyPurchaseReturns.createdAt, monthStart),
+          ),
+        );
+      return num(row?.total);
+    }, 0);
+
+    const distributionSalesMonth = await safe(async () => {
+      const [row] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${pharmacyDistInvoices.totalPkr}), 0)` })
+        .from(pharmacyDistInvoices)
+        .where(
+          and(
+            eq(pharmacyDistInvoices.organizationId, organizationId),
+            eq(pharmacyDistInvoices.branchId, branch.id),
+            gte(pharmacyDistInvoices.createdAt, monthStart),
+          ),
+        );
+      return num(row?.total);
+    }, 0);
+
+    const wholesaleSalesMonth = await safe(async () => {
+      const [row] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${pharmacyDistInvoices.totalPkr}), 0)` })
+        .from(pharmacyDistInvoices)
+        .innerJoin(pharmacyTradeCustomers, eq(pharmacyTradeCustomers.id, pharmacyDistInvoices.tradeCustomerId))
+        .where(
+          and(
+            eq(pharmacyDistInvoices.organizationId, organizationId),
+            eq(pharmacyDistInvoices.branchId, branch.id),
+            gte(pharmacyDistInvoices.createdAt, monthStart),
+            inArray(pharmacyTradeCustomers.priceLevel, ["wholesale", "dealer", "Wholesale", "Dealer"]),
+          ),
+        );
+      return num(row?.total);
+    }, 0);
+
+    type ActivityItem = { label: string; amount?: number; at: string };
+
+    const recentSalesActivity: ActivityItem[] = await safe(async () => {
+      const rows = await this.db
+        .select({
+          invoiceNumber: pharmacySales.invoiceNumber,
+          total: pharmacySales.totalPkr,
+          createdAt: pharmacySales.createdAt,
+        })
+        .from(pharmacySales)
+        .where(and(eq(pharmacySales.organizationId, organizationId), eq(pharmacySales.branchId, branch.id)))
+        .orderBy(desc(pharmacySales.createdAt))
+        .limit(8);
+      return rows.map((r) => ({
+        label: r.invoiceNumber,
+        amount: r.total,
+        at: r.createdAt.toISOString(),
+      }));
+    }, []);
+
+    const recentPurchasesActivity: ActivityItem[] = await safe(async () => {
+      const grns = await this.db
+        .select({
+          label: pharmacyGrns.grnNumber,
+          amount: pharmacyGrns.totalPkr,
+          createdAt: pharmacyGrns.createdAt,
+        })
+        .from(pharmacyGrns)
+        .where(and(eq(pharmacyGrns.organizationId, organizationId), eq(pharmacyGrns.branchId, branch.id)))
+        .orderBy(desc(pharmacyGrns.createdAt))
+        .limit(8);
+      if (grns.length) {
+        return grns.map((r) => ({ label: r.label, amount: r.amount, at: r.createdAt.toISOString() }));
+      }
+      const pos = await this.db
+        .select({
+          label: pharmacyPurchaseOrders.poNumber,
+          amount: pharmacyPurchaseOrders.totalPkr,
+          createdAt: pharmacyPurchaseOrders.createdAt,
+        })
+        .from(pharmacyPurchaseOrders)
+        .where(
+          and(
+            eq(pharmacyPurchaseOrders.organizationId, organizationId),
+            eq(pharmacyPurchaseOrders.branchId, branch.id),
+          ),
+        )
+        .orderBy(desc(pharmacyPurchaseOrders.createdAt))
+        .limit(8);
+      return pos.map((r) => ({ label: r.label, amount: r.amount, at: r.createdAt.toISOString() }));
+    }, []);
+
+    const recentPaymentsActivity: ActivityItem[] = await safe(async () => {
+      const rows = await this.db
+        .select({
+          amount: pharmacyKhataEntries.amountPkr,
+          notes: pharmacyKhataEntries.notes,
+          createdAt: pharmacyKhataEntries.createdAt,
+          patientName: pharmacyPatients.name,
+        })
+        .from(pharmacyKhataEntries)
+        .innerJoin(pharmacyPatients, eq(pharmacyPatients.id, pharmacyKhataEntries.patientId))
+        .where(
+          and(
+            eq(pharmacyPatients.organizationId, organizationId),
+            eq(pharmacyPatients.branchId, branch.id),
+            eq(pharmacyKhataEntries.type, "payment"),
+          ),
+        )
+        .orderBy(desc(pharmacyKhataEntries.createdAt))
+        .limit(8);
+      return rows.map((r) => ({
+        label: r.notes || `Payment — ${r.patientName}`,
+        amount: r.amount,
+        at: r.createdAt.toISOString(),
+      }));
+    }, []);
+
+    const recentReceiptsActivity: ActivityItem[] = await safe(async () => {
+      const rows = await this.db
+        .select({
+          label: pharmacyCollections.collectionNumber,
+          amount: pharmacyCollections.amountPkr,
+          createdAt: pharmacyCollections.createdAt,
+        })
+        .from(pharmacyCollections)
+        .where(
+          and(eq(pharmacyCollections.organizationId, organizationId), eq(pharmacyCollections.branchId, branch.id)),
+        )
+        .orderBy(desc(pharmacyCollections.createdAt))
+        .limit(8);
+      return rows.map((r) => ({ label: r.label, amount: r.amount, at: r.createdAt.toISOString() }));
+    }, []);
+
+    const recentActivities = [
+      ...recentSalesActivity.map((a) => ({ label: `Sale ${a.label}`, at: a.at })),
+      ...recentPurchasesActivity.map((a) => ({ label: `Purchase ${a.label}`, at: a.at })),
+      ...recentPaymentsActivity.map((a) => ({ label: `Payment ${a.label}`, at: a.at })),
+      ...recentReceiptsActivity.map((a) => ({ label: `Receipt ${a.label}`, at: a.at })),
+    ]
+      .sort((a, b) => (a.at < b.at ? 1 : -1))
+      .slice(0, 12);
+
     return {
-      totalSalesToday: Number(salesToday[0]?.total ?? 0),
+      totalSalesToday: totalSalesTodayNum,
       totalPurchasesMonth: purchaseMonth,
       availableStock: totalStock,
       lowStockCount,
       expiringCount,
       revenueMonth,
       profitMonth,
-      pendingOrders: Number(pendingRx[0]?.count ?? 0),
-      customerCount: Number(patients[0]?.count ?? 0),
+      pendingOrders: pendingOrdersTotal,
+      customerCount: patientCount,
       transactionCountToday,
       dailySales,
       monthlyRevenue,
@@ -630,6 +1127,41 @@ export class PharmacyService implements OnModuleInit {
       paymentBreakdown,
       categoryStock,
       alerts: alerts.slice(0, 12),
+      totalSales: allTimeSales,
+      totalPurchases,
+      totalProfit,
+      grossProfit,
+      netProfit,
+      todaySales: totalSalesTodayNum,
+      todayPurchases,
+      todayExpenses,
+      todayCollections,
+      todayPayments,
+      cashInHand,
+      bankBalance,
+      customerReceivables,
+      supplierPayables,
+      totalCustomers: patientCount + tradeCustomerCount,
+      totalSuppliers,
+      totalProducts: medicines.length,
+      totalStockValue,
+      outOfStockCount,
+      expiredCount,
+      nearExpiryCount,
+      pendingCustomerPayments,
+      pendingSupplierPayments,
+      salesReturnTotal,
+      purchaseReturnTotal,
+      distributionSalesMonth,
+      retailSalesMonth: revenueMonth,
+      wholesaleSalesMonth,
+      weeklySales: dailySales,
+      slowMovingMedicines,
+      recentSales: recentSalesActivity,
+      recentPurchases: recentPurchasesActivity,
+      recentPayments: recentPaymentsActivity,
+      recentReceipts: recentReceiptsActivity,
+      recentActivities,
     };
   }
 
@@ -675,8 +1207,14 @@ export class PharmacyService implements OnModuleInit {
         category: input.category ?? "Tablet",
         manufacturer: input.manufacturer?.trim() || null,
         barcode: input.barcode?.trim() || null,
+        alternateBarcode: input.alternateBarcode?.trim() || null,
         purchasePricePkr: Math.round(input.purchasePrice ?? 0),
         sellingPricePkr: Math.round(input.sellingPrice ?? 0),
+        costPricePkr: Math.round(input.costPrice ?? input.purchasePrice ?? 0),
+        wholesalePricePkr: Math.round(input.wholesalePrice ?? 0),
+        dealerPricePkr: Math.round(input.dealerPrice ?? 0),
+        minSalePricePkr: Math.round(input.minSalePrice ?? 0),
+        maxRetailPricePkr: Math.round(input.maxRetailPrice ?? 0),
         taxPct: Math.round(input.taxPct ?? 0),
         reorderLevel: Math.round(input.reorderLevel ?? 10),
         suggestedReorderQty: Math.round(input.suggestedReorderQty ?? (input.reorderLevel ?? 10) * 2),
@@ -688,6 +1226,9 @@ export class PharmacyService implements OnModuleInit {
         tabletsPerStrip: Math.max(1, Math.round(input.tabletsPerStrip ?? 1)),
         stripsPerBox: Math.max(1, Math.round(input.stripsPerBox ?? 1)),
         isControlled: input.isControlled ?? false,
+        prescriptionRequired: input.prescriptionRequired ?? false,
+        companyId: input.companyId ?? null,
+        status: input.status?.trim() || "active",
         warningsJson: stringifyJsonArray(input.warnings),
         instructionsJson: stringifyJsonArray(input.instructions),
       })
@@ -775,10 +1316,22 @@ export class PharmacyService implements OnModuleInit {
         category: input.category ?? existing.category,
         manufacturer: input.manufacturer !== undefined ? input.manufacturer.trim() || null : existing.manufacturer,
         barcode: input.barcode !== undefined ? input.barcode.trim() || null : existing.barcode,
+        alternateBarcode:
+          input.alternateBarcode !== undefined
+            ? input.alternateBarcode.trim() || null
+            : existing.alternateBarcode,
         purchasePricePkr:
           input.purchasePrice !== undefined ? Math.round(input.purchasePrice) : existing.purchasePricePkr,
         sellingPricePkr:
           input.sellingPrice !== undefined ? Math.round(input.sellingPrice) : existing.sellingPricePkr,
+        costPricePkr: input.costPrice !== undefined ? Math.round(input.costPrice) : existing.costPricePkr,
+        wholesalePricePkr:
+          input.wholesalePrice !== undefined ? Math.round(input.wholesalePrice) : existing.wholesalePricePkr,
+        dealerPricePkr: input.dealerPrice !== undefined ? Math.round(input.dealerPrice) : existing.dealerPricePkr,
+        minSalePricePkr:
+          input.minSalePrice !== undefined ? Math.round(input.minSalePrice) : existing.minSalePricePkr,
+        maxRetailPricePkr:
+          input.maxRetailPrice !== undefined ? Math.round(input.maxRetailPrice) : existing.maxRetailPricePkr,
         taxPct: input.taxPct !== undefined ? Math.round(input.taxPct) : existing.taxPct,
         reorderLevel: input.reorderLevel !== undefined ? Math.round(input.reorderLevel) : existing.reorderLevel,
         suggestedReorderQty:
@@ -795,6 +1348,10 @@ export class PharmacyService implements OnModuleInit {
         stripsPerBox:
           input.stripsPerBox !== undefined ? Math.max(1, Math.round(input.stripsPerBox)) : existing.stripsPerBox,
         isControlled: input.isControlled !== undefined ? input.isControlled : existing.isControlled,
+        prescriptionRequired:
+          input.prescriptionRequired !== undefined ? input.prescriptionRequired : existing.prescriptionRequired,
+        companyId: input.companyId !== undefined ? input.companyId || null : existing.companyId,
+        status: input.status !== undefined ? input.status.trim() || existing.status : existing.status,
         warningsJson: input.warnings ? stringifyJsonArray(input.warnings) : existing.warningsJson,
         instructionsJson: input.instructions ? stringifyJsonArray(input.instructions) : existing.instructionsJson,
       })
@@ -891,6 +1448,7 @@ export class PharmacyService implements OnModuleInit {
 
     return rows.map((p) => ({
       id: p.id,
+      code: p.code ?? null,
       name: p.name,
       phone: p.phone,
       email: p.email,
@@ -911,11 +1469,13 @@ export class PharmacyService implements OnModuleInit {
 
   async createPatient(organizationId: string, input: CreatePatient) {
     const branch = await this.resolveBranch(organizationId, input.branchCode);
+    const code = (input.code?.trim() || `PAT-${Date.now().toString().slice(-6)}`).toUpperCase();
     const [row] = await this.db
       .insert(pharmacyPatients)
       .values({
         organizationId,
         branchId: branch.id,
+        code,
         name: input.name.trim(),
         phone: input.phone?.trim() || null,
         email: input.email?.trim() || null,
@@ -933,6 +1493,7 @@ export class PharmacyService implements OnModuleInit {
     if (!row) throw new BadRequestException("Failed to create patient");
     return {
       id: row.id,
+      code: row.code ?? code,
       name: row.name,
       phone: row.phone,
       email: row.email,
@@ -968,8 +1529,10 @@ export class PharmacyService implements OnModuleInit {
 
     return rows.map((d) => ({
       id: d.id,
+      code: d.code ?? null,
       name: d.name,
       specialization: d.specialization,
+      registrationNumber: d.registrationNumber ?? null,
       clinic: d.clinic,
       phone: d.phone,
       email: d.email,
@@ -979,13 +1542,16 @@ export class PharmacyService implements OnModuleInit {
 
   async createDoctor(organizationId: string, input: CreateDoctor) {
     const branch = await this.resolveBranch(organizationId, input.branchCode);
+    const code = (input.code?.trim() || `DOC-${Date.now().toString().slice(-6)}`).toUpperCase();
     const [row] = await this.db
       .insert(pharmacyDoctors)
       .values({
         organizationId,
         branchId: branch.id,
+        code,
         name: input.name.trim(),
         specialization: input.specialization?.trim() || null,
+        registrationNumber: input.registrationNumber?.trim() || null,
         clinic: input.clinic?.trim() || null,
         phone: input.phone?.trim() || null,
         email: input.email?.trim() || null,
@@ -994,8 +1560,10 @@ export class PharmacyService implements OnModuleInit {
     if (!row) throw new BadRequestException("Failed to create doctor");
     return {
       id: row.id,
+      code: row.code ?? code,
       name: row.name,
       specialization: row.specialization,
+      registrationNumber: row.registrationNumber ?? null,
       clinic: row.clinic,
       phone: row.phone,
       email: row.email,

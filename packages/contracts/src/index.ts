@@ -14,6 +14,7 @@ export * from "./module-manifest";
 export * from "./operations";
 export * from "./pharmacy";
 export * from "./pharmacy-units";
+export * from "./pharmacy-codes";
 export * from "./store-grocery";
 export * from "./store-units";
 export * from "./store";

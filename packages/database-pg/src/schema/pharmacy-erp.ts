@@ -564,6 +564,7 @@ export const pharmacyPriceLists = pgTable("pharmacy_price_lists", {
     .notNull()
     .references(() => organizations.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  code: text("code"),
   priceLevel: text("price_level").notNull().default("wholesale"),
   customerType: text("customer_type"),
   areaId: uuid("area_id").references(() => pharmacyAreas.id, { onDelete: "set null" }),
@@ -592,6 +593,7 @@ export const pharmacySchemes = pgTable("pharmacy_schemes", {
     .notNull()
     .references(() => organizations.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  code: text("code"),
   schemeType: text("scheme_type").notNull().default("buy_x_get_y"),
   medicineId: uuid("medicine_id").references(() => pharmacyMedicines.id, { onDelete: "set null" }),
   companyId: uuid("company_id").references(() => pharmacyCompanies.id, { onDelete: "set null" }),

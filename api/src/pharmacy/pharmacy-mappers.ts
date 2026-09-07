@@ -31,8 +31,14 @@ export function mapMedicineRow(
   category: string;
   manufacturer: string | null;
   barcode: string | null;
+  alternateBarcode: string | null;
   purchasePrice: number;
   sellingPrice: number;
+  costPrice: number;
+  wholesalePrice: number;
+  dealerPrice: number;
+  minSalePrice: number;
+  maxRetailPrice: number;
   taxPct: number;
   reorderLevel: number;
   suggestedReorderQty: number;
@@ -44,6 +50,9 @@ export function mapMedicineRow(
   tabletsPerStrip: number;
   stripsPerBox: number;
   isControlled: boolean;
+  prescriptionRequired: boolean;
+  companyId: string | null;
+  status: string;
   warnings: string[];
   instructions: string[];
   nearestExpiry: string | null;
@@ -59,8 +68,14 @@ export function mapMedicineRow(
     category: m.category,
     manufacturer: m.manufacturer,
     barcode: m.barcode,
+    alternateBarcode: m.alternateBarcode,
     purchasePrice: m.purchasePricePkr,
     sellingPrice: m.sellingPricePkr,
+    costPrice: m.costPricePkr,
+    wholesalePrice: m.wholesalePricePkr,
+    dealerPrice: m.dealerPricePkr,
+    minSalePrice: m.minSalePricePkr,
+    maxRetailPrice: m.maxRetailPricePkr,
     taxPct: m.taxPct,
     reorderLevel: m.reorderLevel,
     suggestedReorderQty: m.suggestedReorderQty,
@@ -72,6 +87,9 @@ export function mapMedicineRow(
     tabletsPerStrip: m.tabletsPerStrip,
     stripsPerBox: m.stripsPerBox,
     isControlled: m.isControlled,
+    prescriptionRequired: m.prescriptionRequired,
+    companyId: m.companyId,
+    status: m.status,
     warnings: parseJsonArray(m.warningsJson),
     instructions: parseJsonArray(m.instructionsJson),
     nearestExpiry,

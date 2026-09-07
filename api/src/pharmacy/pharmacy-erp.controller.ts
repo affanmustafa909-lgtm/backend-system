@@ -7,6 +7,7 @@ import {
   createPharmacySaleReturnSchema,
   createPharmacyTradeCustomerSchema,
   createPharmacyWarehouseSchema,
+  PHARMACY_CODE_CATALOG,
   resolvePharmacyPriceSchema,
 } from "@platform/contracts";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -23,6 +24,22 @@ import { PharmacyErpService } from "./pharmacy-erp.service";
 @RequireSystemType("pharmacy")
 export class PharmacyErpController {
   constructor(private readonly erp: PharmacyErpService) {}
+
+  @Get("lookup")
+  @RequirePermissions("pharmacy.view", "pops.read")
+  lookup(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("q") q: string,
+    @Query("branchCode") branchCode?: string,
+  ) {
+    return this.erp.lookupByCode(user.organizationId, branchCode?.trim() ?? "", q ?? "");
+  }
+
+  @Get("code-catalog")
+  @RequirePermissions("pharmacy.view", "pops.read")
+  codeCatalog() {
+    return { prefixes: PHARMACY_CODE_CATALOG };
+  }
 
   @Get("companies")
   @RequirePermissions("distribution.masters", "pharmacy.view", "pops.read")

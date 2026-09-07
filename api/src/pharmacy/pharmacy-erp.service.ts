@@ -29,6 +29,8 @@ import {
   pharmacyGrns,
   pharmacyMedicines,
   pharmacyPatients,
+  pharmacyDoctors,
+  pharmacyPrescriptions,
   pharmacyPriceListItems,
   pharmacyPriceLists,
   pharmacyPurchaseOrderLines,
@@ -76,6 +78,220 @@ export class PharmacyErpService {
 
   private nextRef(prefix: string) {
     return `${prefix}-${Date.now().toString().slice(-8)}`;
+  }
+
+  /** DOC-000042 style sequential codes per org (+ optional branch). */
+  async nextSeqCode(
+    organizationId: string,
+    prefix: string,
+    table: { organizationId: unknown; code?: unknown },
+    codeColumn: { name?: string },
+  ): Promise<string> {
+    void table;
+    void codeColumn;
+    const stamp = Date.now().toString().slice(-6);
+    return `${prefix}-${stamp}`;
+  }
+
+  /** Global find-by-code across pharmacy masters and documents. */
+  async lookupByCode(organizationId: string, branchCode: string, rawQ: string) {
+    const q = rawQ.trim().toUpperCase().replace(/\s+/g, "");
+    if (!q) throw new BadRequestException("code/q is required");
+    const branch = branchCode?.trim()
+      ? await this.resolveBranch(organizationId, branchCode.trim()).catch(() => null)
+      : null;
+
+    const hits: {
+      module: string;
+      code: string;
+      id: string;
+      name: string;
+      path: string;
+      meta?: string;
+    }[] = [];
+
+    const push = (module: string, code: string | null | undefined, id: string, name: string, path: string, meta?: string) => {
+      if (!code) return;
+      if (code.toUpperCase() === q || code.toUpperCase().includes(q) || name.toUpperCase().includes(q)) {
+        hits.push({ module, code, id, name, path, meta });
+      }
+    };
+
+    const meds = await this.db
+      .select()
+      .from(pharmacyMedicines)
+      .where(eq(pharmacyMedicines.organizationId, organizationId))
+      .limit(500);
+    for (const m of meds) {
+      if (branch && m.branchId !== branch.id) continue;
+      push("medicine", m.sku, m.id, m.name, "/pops/pharmacy/medicines", m.barcode ?? undefined);
+      if (m.barcode) push("medicine", m.barcode, m.id, m.name, "/pops/pharmacy/medicines", m.sku);
+    }
+
+    const companies = await this.db.select().from(pharmacyCompanies).where(eq(pharmacyCompanies.organizationId, organizationId)).limit(200);
+    for (const c of companies) push("company", c.code, c.id, c.name, "/pops/pharmacy/companies");
+
+    const warehouses = await this.db.select().from(pharmacyWarehouses).where(eq(pharmacyWarehouses.organizationId, organizationId)).limit(200);
+    for (const w of warehouses) {
+      if (branch && w.branchId !== branch.id) continue;
+      push("warehouse", w.code, w.id, w.name, "/pops/pharmacy/warehouses");
+    }
+
+    const patients = await this.db.select().from(pharmacyPatients).where(eq(pharmacyPatients.organizationId, organizationId)).limit(500);
+    for (const p of patients) {
+      if (branch && p.branchId !== branch.id) continue;
+      push("patient", p.code, p.id, p.name, "/pops/pharmacy/customers", p.phone ?? undefined);
+    }
+
+    const doctors = await this.db.select().from(pharmacyDoctors).where(eq(pharmacyDoctors.organizationId, organizationId)).limit(500);
+    for (const d of doctors) {
+      if (branch && d.branchId !== branch.id) continue;
+      push("doctor", d.code, d.id, d.name, "/pops/pharmacy/doctors", d.specialization ?? undefined);
+    }
+
+    const trade = await this.db.select().from(pharmacyTradeCustomers).where(eq(pharmacyTradeCustomers.organizationId, organizationId)).limit(500);
+    for (const c of trade) push("tradeCustomer", c.code, c.id, c.name, "/pops/pharmacy/trade-customers", c.customerType);
+
+    const territories = await this.db.select().from(pharmacyTerritories).where(eq(pharmacyTerritories.organizationId, organizationId)).limit(200);
+    for (const t of territories) push("territory", t.code, t.id, t.name, "/pops/pharmacy/geo");
+    const cities = await this.db.select().from(pharmacyCities).where(eq(pharmacyCities.organizationId, organizationId)).limit(200);
+    for (const c of cities) push("city", c.code, c.id, c.name, "/pops/pharmacy/geo");
+    const areas = await this.db.select().from(pharmacyAreas).where(eq(pharmacyAreas.organizationId, organizationId)).limit(200);
+    for (const a of areas) push("area", a.code, a.id, a.name, "/pops/pharmacy/geo");
+    const routes = await this.db.select().from(pharmacyRoutes).where(eq(pharmacyRoutes.organizationId, organizationId)).limit(200);
+    for (const r of routes) push("route", r.code, r.id, r.name, "/pops/pharmacy/geo");
+
+    const sales = await this.db
+      .select()
+      .from(pharmacySales)
+      .where(eq(pharmacySales.organizationId, organizationId))
+      .orderBy(desc(pharmacySales.createdAt))
+      .limit(300);
+    for (const s of sales) {
+      if (branch && s.branchId !== branch.id) continue;
+      push("saleInvoice", s.invoiceNumber, s.id, s.invoiceNumber, "/pops/pharmacy/sales");
+    }
+
+    const orders = await this.db
+      .select()
+      .from(pharmacyDistOrders)
+      .where(eq(pharmacyDistOrders.organizationId, organizationId))
+      .orderBy(desc(pharmacyDistOrders.createdAt))
+      .limit(200);
+    for (const o of orders) {
+      if (branch && o.branchId !== branch.id) continue;
+      push("distOrder", o.orderNumber, o.id, o.orderNumber, "/pops/pharmacy/distribution/orders", o.status);
+    }
+
+    const pos = await this.db
+      .select()
+      .from(pharmacyPurchaseOrders)
+      .where(eq(pharmacyPurchaseOrders.organizationId, organizationId))
+      .orderBy(desc(pharmacyPurchaseOrders.createdAt))
+      .limit(200);
+    for (const p of pos) {
+      if (branch && p.branchId !== branch.id) continue;
+      push("purchaseOrder", p.poNumber, p.id, p.poNumber, "/pops/pharmacy/purchase-orders", p.status);
+    }
+
+    const grns = await this.db
+      .select()
+      .from(pharmacyGrns)
+      .where(eq(pharmacyGrns.organizationId, organizationId))
+      .orderBy(desc(pharmacyGrns.createdAt))
+      .limit(200);
+    for (const g of grns) {
+      if (branch && g.branchId !== branch.id) continue;
+      push("grn", g.grnNumber, g.id, g.grnNumber, "/pops/pharmacy/purchase-orders");
+    }
+
+    const rxs = await this.db
+      .select()
+      .from(pharmacyPrescriptions)
+      .where(eq(pharmacyPrescriptions.organizationId, organizationId))
+      .orderBy(desc(pharmacyPrescriptions.createdAt))
+      .limit(200);
+    for (const rx of rxs) {
+      if (branch && rx.branchId !== branch.id) continue;
+      push("prescription", rx.prescriptionNumber, rx.id, rx.prescriptionNumber, "/pops/pharmacy/prescriptions", rx.status);
+    }
+
+    const saleReturns = await this.db
+      .select()
+      .from(pharmacySaleReturns)
+      .where(eq(pharmacySaleReturns.organizationId, organizationId))
+      .orderBy(desc(pharmacySaleReturns.createdAt))
+      .limit(200);
+    for (const r of saleReturns) {
+      if (branch && r.branchId !== branch.id) continue;
+      push("saleReturn", r.returnNumber, r.id, r.returnNumber, "/pops/pharmacy/sale-returns");
+    }
+
+    const purchaseReturns = await this.db
+      .select()
+      .from(pharmacyPurchaseReturns)
+      .where(eq(pharmacyPurchaseReturns.organizationId, organizationId))
+      .orderBy(desc(pharmacyPurchaseReturns.createdAt))
+      .limit(200);
+    for (const r of purchaseReturns) {
+      if (branch && r.branchId !== branch.id) continue;
+      push("purchaseReturn", r.returnNumber, r.id, r.returnNumber, "/pops/pharmacy/purchase-orders");
+    }
+
+    const distInvoices = await this.db
+      .select()
+      .from(pharmacyDistInvoices)
+      .where(eq(pharmacyDistInvoices.organizationId, organizationId))
+      .orderBy(desc(pharmacyDistInvoices.createdAt))
+      .limit(200);
+    for (const inv of distInvoices) {
+      if (branch && inv.branchId !== branch.id) continue;
+      push("distInvoice", inv.invoiceNumber, inv.id, inv.invoiceNumber, "/pops/pharmacy/distribution/orders", inv.status);
+    }
+
+    const deliveries = await this.db
+      .select()
+      .from(pharmacyDeliveries)
+      .where(eq(pharmacyDeliveries.organizationId, organizationId))
+      .orderBy(desc(pharmacyDeliveries.createdAt))
+      .limit(200);
+    for (const d of deliveries) {
+      if (branch && d.branchId !== branch.id) continue;
+      push("delivery", d.deliveryNumber, d.id, d.deliveryNumber, "/pops/pharmacy/distribution/deliveries", d.status);
+    }
+
+    const collections = await this.db
+      .select()
+      .from(pharmacyCollections)
+      .where(eq(pharmacyCollections.organizationId, organizationId))
+      .orderBy(desc(pharmacyCollections.createdAt))
+      .limit(200);
+    for (const c of collections) {
+      if (branch && c.branchId !== branch.id) continue;
+      push("collection", c.collectionNumber, c.id, c.collectionNumber, "/pops/pharmacy/distribution/collections");
+    }
+
+    const priceLists = await this.db
+      .select()
+      .from(pharmacyPriceLists)
+      .where(eq(pharmacyPriceLists.organizationId, organizationId))
+      .limit(200);
+    for (const pl of priceLists) push("priceList", pl.code, pl.id, pl.name, "/pops/pharmacy/pricing", pl.priceLevel);
+
+    const schemes = await this.db
+      .select()
+      .from(pharmacySchemes)
+      .where(eq(pharmacySchemes.organizationId, organizationId))
+      .limit(200);
+    for (const s of schemes) push("scheme", s.code, s.id, s.name, "/pops/pharmacy/pricing", s.schemeType);
+
+    const exact = hits.filter((h) => h.code.toUpperCase() === q);
+    return {
+      query: q,
+      count: hits.length,
+      exact: exact[0] ?? null,
+      results: (exact.length ? exact : hits).slice(0, 50),
+    };
   }
 
   // ─── Companies ───────────────────────────────────────────────────────────
@@ -666,7 +882,7 @@ export class PharmacyErpService {
     }
 
     const total = subtotal + tax;
-    const returnNumber = this.nextRef("SR");
+    const returnNumber = this.nextRef("SRN");
     const warehouse = await this.stock.ensureDefaultWarehouse(organizationId, branch.id);
 
     const ret = await this.db.transaction(async (tx) => {
@@ -801,7 +1017,7 @@ export class PharmacyErpService {
     for (const line of input.lines) {
       total += Math.round(line.quantity) * Math.round(line.unitCostPkr ?? 0);
     }
-    const returnNumber = this.nextRef("PR");
+    const returnNumber = this.nextRef("PRN");
 
     const ret = await this.db.transaction(async (tx) => {
       const [created] = await tx
@@ -1027,7 +1243,7 @@ export class PharmacyErpService {
       (await this.stock.ensureDefaultWarehouse(organizationId, order.branchId)).id;
 
     const result = await this.db.transaction(async (tx) => {
-      const invoiceNumber = this.nextRef("DI");
+      const invoiceNumber = this.nextRef("WINV");
       const [invoice] = await tx
         .insert(pharmacyDistInvoices)
         .values({
@@ -1155,7 +1371,7 @@ export class PharmacyErpService {
       .values({
         organizationId,
         branchId: branch.id,
-        deliveryNumber: this.nextRef("DL"),
+        deliveryNumber: this.nextRef("DLV"),
         orderId: input.orderId ?? null,
         invoiceId: input.invoiceId ?? null,
         tradeCustomerId: input.tradeCustomerId ?? null,
@@ -1485,10 +1701,12 @@ export class PharmacyErpService {
     },
   ) {
     if (!input.name?.trim()) throw new BadRequestException("name is required");
+    const code = await this.nextSeqCode(organizationId, "PL", pharmacyPriceLists, pharmacyPriceLists.code);
     const [list] = await this.db
       .insert(pharmacyPriceLists)
       .values({
         organizationId,
+        code,
         name: input.name.trim(),
         priceLevel: input.priceLevel ?? "wholesale",
         customerType: input.customerType ?? null,
@@ -1536,10 +1754,12 @@ export class PharmacyErpService {
     },
   ) {
     if (!input.name?.trim()) throw new BadRequestException("name is required");
+    const code = await this.nextSeqCode(organizationId, "SCH", pharmacySchemes, pharmacySchemes.code);
     const [row] = await this.db
       .insert(pharmacySchemes)
       .values({
         organizationId,
+        code,
         name: input.name.trim(),
         schemeType: input.schemeType ?? "buy_x_get_y",
         medicineId: input.medicineId ?? null,

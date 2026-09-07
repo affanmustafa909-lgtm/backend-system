@@ -79,6 +79,8 @@ export const pharmacyPatients = pgTable("pharmacy_patients", {
   branchId: uuid("branch_id")
     .notNull()
     .references(() => popsBranches.id, { onDelete: "cascade" }),
+  /** Unique business code e.g. PAT-000123 */
+  code: text("code"),
   name: text("name").notNull(),
   phone: text("phone"),
   email: text("email"),
@@ -104,8 +106,11 @@ export const pharmacyDoctors = pgTable("pharmacy_doctors", {
   branchId: uuid("branch_id")
     .notNull()
     .references(() => popsBranches.id, { onDelete: "cascade" }),
+  /** Unique business code e.g. DOC-000123 */
+  code: text("code"),
   name: text("name").notNull(),
   specialization: text("specialization"),
+  registrationNumber: text("registration_number"),
   clinic: text("clinic"),
   phone: text("phone"),
   email: text("email"),

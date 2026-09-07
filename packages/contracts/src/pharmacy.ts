@@ -90,8 +90,14 @@ export const medicineSchema = z.object({
   category: z.string(),
   manufacturer: z.string().nullable(),
   barcode: z.string().nullable(),
+  alternateBarcode: z.string().nullable().optional(),
   purchasePrice: z.number(),
   sellingPrice: z.number(),
+  costPrice: z.number().optional(),
+  wholesalePrice: z.number().optional(),
+  dealerPrice: z.number().optional(),
+  minSalePrice: z.number().optional(),
+  maxRetailPrice: z.number().optional(),
   taxPct: z.number(),
   reorderLevel: z.number(),
   suggestedReorderQty: z.number(),
@@ -103,6 +109,9 @@ export const medicineSchema = z.object({
   tabletsPerStrip: z.number(),
   stripsPerBox: z.number(),
   isControlled: z.boolean(),
+  prescriptionRequired: z.boolean().optional(),
+  companyId: z.string().uuid().nullable().optional(),
+  status: z.string().optional(),
   warnings: z.array(z.string()),
   instructions: z.array(z.string()),
   nearestExpiry: z.string().nullable(),
@@ -130,6 +139,7 @@ export const medicineBatchSchema = z.object({
 
 export const pharmacyPatientSchema = z.object({
   id: z.string().uuid(),
+  code: z.string().nullable().optional(),
   name: z.string(),
   phone: z.string().nullable(),
   email: z.string().nullable(),
@@ -168,8 +178,10 @@ export const pharmacyKhataStatementSchema = z.object({
 
 export const pharmacyDoctorSchema = z.object({
   id: z.string().uuid(),
+  code: z.string().nullable().optional(),
   name: z.string(),
   specialization: z.string().nullable(),
+  registrationNumber: z.string().nullable().optional(),
   clinic: z.string().nullable(),
   phone: z.string().nullable(),
   email: z.string().nullable(),
@@ -285,6 +297,12 @@ export const pharmacyAlertSchema = z.object({
   medicineId: z.string().uuid().optional(),
 });
 
+const pharmacyActivityItemSchema = z.object({
+  label: z.string(),
+  amount: z.number().optional(),
+  at: z.string(),
+});
+
 export const pharmacyDashboardSchema = z.object({
   totalSalesToday: z.number(),
   totalPurchasesMonth: z.number(),
@@ -305,6 +323,44 @@ export const pharmacyDashboardSchema = z.object({
   paymentBreakdown: z.array(z.object({ label: z.string(), value: z.number() })),
   categoryStock: z.array(z.object({ label: z.string(), value: z.number() })),
   alerts: z.array(pharmacyAlertSchema),
+  /** Extended KPI payload */
+  totalSales: z.number().default(0),
+  totalPurchases: z.number().default(0),
+  totalProfit: z.number().default(0),
+  grossProfit: z.number().default(0),
+  netProfit: z.number().default(0),
+  todaySales: z.number().default(0),
+  todayPurchases: z.number().default(0),
+  todayExpenses: z.number().default(0),
+  todayCollections: z.number().default(0),
+  todayPayments: z.number().default(0),
+  cashInHand: z.number().default(0),
+  bankBalance: z.number().default(0),
+  customerReceivables: z.number().default(0),
+  supplierPayables: z.number().default(0),
+  totalCustomers: z.number().default(0),
+  totalSuppliers: z.number().default(0),
+  totalProducts: z.number().default(0),
+  totalStockValue: z.number().default(0),
+  outOfStockCount: z.number().default(0),
+  expiredCount: z.number().default(0),
+  nearExpiryCount: z.number().default(0),
+  pendingCustomerPayments: z.number().default(0),
+  pendingSupplierPayments: z.number().default(0),
+  salesReturnTotal: z.number().default(0),
+  purchaseReturnTotal: z.number().default(0),
+  distributionSalesMonth: z.number().default(0),
+  retailSalesMonth: z.number().default(0),
+  wholesaleSalesMonth: z.number().default(0),
+  weeklySales: z.array(z.object({ date: z.string(), amount: z.number() })).default([]),
+  slowMovingMedicines: z
+    .array(z.object({ name: z.string(), qty: z.number(), revenue: z.number() }))
+    .default([]),
+  recentSales: z.array(pharmacyActivityItemSchema).optional().default([]),
+  recentPurchases: z.array(pharmacyActivityItemSchema).optional().default([]),
+  recentPayments: z.array(pharmacyActivityItemSchema).optional().default([]),
+  recentReceipts: z.array(pharmacyActivityItemSchema).optional().default([]),
+  recentActivities: z.array(z.object({ label: z.string(), at: z.string() })).optional().default([]),
 });
 
 export const createMedicineSchema = z.object({
@@ -318,8 +374,14 @@ export const createMedicineSchema = z.object({
   category: medicineCategorySchema.default("Tablet"),
   manufacturer: z.string().optional(),
   barcode: z.string().optional(),
+  alternateBarcode: z.string().optional(),
   purchasePrice: z.number().min(0).default(0),
   sellingPrice: z.number().min(0).default(0),
+  costPrice: z.number().min(0).optional(),
+  wholesalePrice: z.number().min(0).optional(),
+  dealerPrice: z.number().min(0).optional(),
+  minSalePrice: z.number().min(0).optional(),
+  maxRetailPrice: z.number().min(0).optional(),
   taxPct: z.number().min(0).max(100).default(0),
   reorderLevel: z.number().min(0).default(10),
   suggestedReorderQty: z.number().min(0).default(0),
@@ -331,6 +393,9 @@ export const createMedicineSchema = z.object({
   rackLocation: z.string().optional(),
   shelfLocation: z.string().optional(),
   isControlled: z.boolean().default(false),
+  prescriptionRequired: z.boolean().optional(),
+  companyId: z.string().uuid().optional(),
+  status: z.string().optional(),
   warnings: z.array(z.string()).optional(),
   instructions: z.array(z.string()).optional(),
   batchNumber: z.string().optional(),
@@ -363,6 +428,7 @@ export const pharmacyPatientHistorySchema = z.object({
 
 export const createPatientSchema = z.object({
   branchCode: z.string().min(1),
+  code: z.string().optional(),
   name: z.string().min(1),
   phone: z.string().optional(),
   email: z.string().optional(),
@@ -387,8 +453,10 @@ export const recordKhataPaymentSchema = z.object({
 
 export const createDoctorSchema = z.object({
   branchCode: z.string().min(1),
+  code: z.string().optional(),
   name: z.string().min(1),
   specialization: z.string().optional(),
+  registrationNumber: z.string().optional(),
   clinic: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().optional(),
