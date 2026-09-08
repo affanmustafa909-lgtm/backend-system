@@ -130,6 +130,15 @@ export class AuthService implements OnModuleInit {
         city: "Lahore",
       },
       {
+        systemType: "distribution",
+        name: "POPS Demo Medical Distribution",
+        adminEmail: "admin.distribution@pops.demo",
+        adminName: "Distribution Owner",
+        branchCode: "DIST-HQ",
+        branchName: "Distribution HQ",
+        city: "Lahore",
+      },
+      {
         systemType: "general_store",
         name: "POPS Demo General Store",
         adminEmail: "admin.store@pops.demo",

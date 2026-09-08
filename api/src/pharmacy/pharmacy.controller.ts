@@ -22,11 +22,12 @@ import { PharmacyService } from "./pharmacy.service";
 
 @Controller("v1/pharmacy")
 @UseGuards(JwtAuthGuard, PermissionsGuard, SystemTypeGuard)
-@RequireSystemType("pharmacy")
+@RequireSystemType("pharmacy", "distribution")
 export class PharmacyController {
   constructor(private readonly pharmacy: PharmacyService) {}
 
   @Get("dashboard")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   getDashboard(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
     return this.pharmacy.getDashboard(user.organizationId, branchCode?.trim() ?? "");
@@ -113,18 +114,21 @@ export class PharmacyController {
   }
 
   @Get("patients")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   listPatients(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
     return this.pharmacy.listPatients(user.organizationId, branchCode?.trim() ?? "");
   }
 
   @Post("patients")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   createPatient(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
     return this.pharmacy.createPatient(user.organizationId, createPatientSchema.parse(body));
   }
 
   @Patch("patients/:patientId")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   updatePatient(
     @CurrentUser() user: AccessJwtPayload,
@@ -135,18 +139,21 @@ export class PharmacyController {
   }
 
   @Get("patients/:patientId/history")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   getPatientHistory(@CurrentUser() user: AccessJwtPayload, @Param("patientId") patientId: string) {
     return this.pharmacy.getPatientHistory(user.organizationId, patientId);
   }
 
   @Get("patients/:patientId/khata")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   getKhataStatement(@CurrentUser() user: AccessJwtPayload, @Param("patientId") patientId: string) {
     return this.pharmacy.getKhataStatement(user.organizationId, patientId);
   }
 
   @Post("patients/:patientId/khata-payment")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   recordKhataPayment(
     @CurrentUser() user: AccessJwtPayload,
@@ -157,24 +164,28 @@ export class PharmacyController {
   }
 
   @Get("doctors")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   listDoctors(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
     return this.pharmacy.listDoctors(user.organizationId, branchCode?.trim() ?? "");
   }
 
   @Post("doctors")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   createDoctor(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
     return this.pharmacy.createDoctor(user.organizationId, createDoctorSchema.parse(body));
   }
 
   @Get("doctors/:doctorId/recommendations")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   listDoctorRecommendations(@CurrentUser() user: AccessJwtPayload, @Param("doctorId") doctorId: string) {
     return this.pharmacy.listDoctorRecommendations(user.organizationId, doctorId);
   }
 
   @Post("doctors/:doctorId/recommendations")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   addDoctorRecommendation(
     @CurrentUser() user: AccessJwtPayload,
@@ -185,6 +196,7 @@ export class PharmacyController {
   }
 
   @Delete("doctors/recommendations/:recommendationId")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   removeDoctorRecommendation(
     @CurrentUser() user: AccessJwtPayload,
@@ -194,12 +206,14 @@ export class PharmacyController {
   }
 
   @Get("doctors/:doctorId/commission-rules")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   listDoctorCommissionRules(@CurrentUser() user: AccessJwtPayload, @Param("doctorId") doctorId: string) {
     return this.pharmacy.listDoctorCommissionRules(user.organizationId, doctorId);
   }
 
   @Post("doctors/:doctorId/commission-rules")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   upsertDoctorCommissionRule(
     @CurrentUser() user: AccessJwtPayload,
@@ -217,36 +231,42 @@ export class PharmacyController {
   }
 
   @Get("doctors/:doctorId/commission-entries")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   listDoctorCommissionEntries(@CurrentUser() user: AccessJwtPayload, @Param("doctorId") doctorId: string) {
     return this.pharmacy.listDoctorCommissionEntries(user.organizationId, doctorId);
   }
 
   @Post("doctors/commission-entries/mark-paid")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   markDoctorCommissionPaid(@CurrentUser() user: AccessJwtPayload, @Body() body: { entryIds: string[] }) {
     return this.pharmacy.markDoctorCommissionPaid(user.organizationId, body.entryIds ?? []);
   }
 
   @Get("prescriptions")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   listPrescriptions(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
     return this.pharmacy.listPrescriptions(user.organizationId, branchCode?.trim() ?? "");
   }
 
   @Post("prescriptions")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   createPrescription(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
     return this.pharmacy.createPrescription(user.organizationId, createPrescriptionSchema.parse(body));
   }
 
   @Patch("prescriptions/:prescriptionId/verify")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   verifyPrescription(@CurrentUser() user: AccessJwtPayload, @Param("prescriptionId") prescriptionId: string) {
     return this.pharmacy.verifyPrescription(user.organizationId, prescriptionId);
   }
 
   @Post("prescriptions/:prescriptionId/dispense")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   dispensePrescription(
     @CurrentUser() user: AccessJwtPayload,
@@ -257,36 +277,42 @@ export class PharmacyController {
   }
 
   @Get("sales")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   listSales(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
     return this.pharmacy.listSales(user.organizationId, branchCode?.trim() ?? "");
   }
 
   @Post("sales")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   createSale(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
     return this.pharmacy.createSale(user.organizationId, createPharmacySaleSchema.parse(body), user.sub);
   }
 
   @Get("shifts")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   listShifts(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
     return this.pharmacy.listShifts(user.organizationId, branchCode?.trim() ?? "");
   }
 
   @Get("shifts/open")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   getOpenShift(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
     return this.pharmacy.getOpenShift(user.organizationId, branchCode?.trim() ?? "");
   }
 
   @Post("shifts/open")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   openShift(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
     return this.pharmacy.openShift(user.organizationId, openPharmacyShiftSchema.parse(body));
   }
 
   @Post("shifts/:shiftId/close")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   closeShift(
     @CurrentUser() user: AccessJwtPayload,
@@ -297,18 +323,21 @@ export class PharmacyController {
   }
 
   @Get("controlled-drugs")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   listControlledDrugLogs(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
     return this.pharmacy.listControlledDrugLogs(user.organizationId, branchCode?.trim() ?? "");
   }
 
   @Get("refill-reminders")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   listRefillReminders(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
     return this.pharmacy.listRefillReminders(user.organizationId, branchCode?.trim() ?? "");
   }
 
   @Post("refill-reminders/:reminderId/sent")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   markRefillReminderSent(@CurrentUser() user: AccessJwtPayload, @Param("reminderId") reminderId: string) {
     return this.pharmacy.markRefillReminderSent(user.organizationId, reminderId);
@@ -327,12 +356,14 @@ export class PharmacyController {
   }
 
   @Get("reports/sales-statement")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   getSalesStatement(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
     return this.pharmacy.getSalesStatement(user.organizationId, branchCode?.trim() ?? "");
   }
 
   @Get("reports/profit-loss")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   getProfitLoss(
     @CurrentUser() user: AccessJwtPayload,
@@ -344,6 +375,7 @@ export class PharmacyController {
   }
 
   @Get("reports/sales-of-month")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   getSalesOfMonth(
     @CurrentUser() user: AccessJwtPayload,
@@ -372,6 +404,7 @@ export class PharmacyController {
   }
 
   @Get("prescriptions/:prescriptionId/attachment")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   getPrescriptionAttachment(
     @CurrentUser() user: AccessJwtPayload,
@@ -381,6 +414,7 @@ export class PharmacyController {
   }
 
   @Get("reports/tax-compliance")
+  @RequireSystemType("pharmacy")
   @RequirePermissions("pops.read")
   getTaxCompliance(
     @CurrentUser() user: AccessJwtPayload,

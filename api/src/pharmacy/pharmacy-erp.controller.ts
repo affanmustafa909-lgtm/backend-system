@@ -21,7 +21,7 @@ import { PharmacyErpService } from "./pharmacy-erp.service";
 
 @Controller("v1/pharmacy")
 @UseGuards(JwtAuthGuard, PermissionsGuard, SystemTypeGuard)
-@RequireSystemType("pharmacy")
+@RequireSystemType("pharmacy", "distribution")
 export class PharmacyErpController {
   constructor(private readonly erp: PharmacyErpService) {}
 

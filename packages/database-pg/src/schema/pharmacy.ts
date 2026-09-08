@@ -162,6 +162,13 @@ export const pharmacySales = pgTable("pharmacy_sales", {
   prescriptionId: uuid("prescription_id").references(() => pharmacyPrescriptions.id, { onDelete: "set null" }),
   shiftId: uuid("shift_id"),
   cashierUserId: uuid("cashier_user_id").references(() => users.id, { onDelete: "set null" }),
+  /** counter | instation | outstation — POS gate context */
+  saleChannel: text("sale_channel"),
+  /** Optional FKs applied in DB script; kept as bare uuids here to avoid pharmacy↔erp import cycles. */
+  areaId: uuid("area_id"),
+  routeId: uuid("route_id"),
+  employeeId: uuid("employee_id"),
+  stationLabel: text("station_label"),
   paymentMethod: text("payment_method").notNull().default("Cash"),
   paymentsJson: text("payments_json"),
   amountPaidPkr: integer("amount_paid_pkr").notNull().default(0),

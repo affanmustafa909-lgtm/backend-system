@@ -270,6 +270,8 @@ export const pharmacySaleLineSchema = z.object({
   lineTotal: z.number(),
 });
 
+export const pharmacySaleChannelSchema = z.enum(["counter", "instation", "outstation"]);
+
 export const pharmacySaleSchema = z.object({
   id: z.string().uuid(),
   invoiceNumber: z.string(),
@@ -277,6 +279,12 @@ export const pharmacySaleSchema = z.object({
   patientName: z.string().nullable(),
   prescriptionId: z.string().uuid().nullable().optional(),
   shiftId: z.string().uuid().nullable().optional(),
+  saleChannel: pharmacySaleChannelSchema.nullable().optional(),
+  areaId: z.string().uuid().nullable().optional(),
+  routeId: z.string().uuid().nullable().optional(),
+  employeeId: z.string().uuid().nullable().optional(),
+  stationLabel: z.string().nullable().optional(),
+  employeeName: z.string().nullable().optional(),
   paymentMethod: pharmacyPaymentMethodSchema,
   payments: z.array(pharmacyPaymentLineSchema),
   amountPaid: z.number(),
@@ -526,6 +534,11 @@ export const createPharmacySaleSchema = z.object({
   patientId: z.string().uuid().optional(),
   prescriptionId: z.string().uuid().optional(),
   shiftId: z.string().uuid().optional(),
+  saleChannel: pharmacySaleChannelSchema.optional(),
+  areaId: z.string().uuid().optional(),
+  routeId: z.string().uuid().optional(),
+  employeeId: z.string().uuid().optional(),
+  stationLabel: z.string().optional(),
   paymentMethod: pharmacyPaymentMethodSchema,
   payments: z.array(pharmacyPaymentLineSchema).optional(),
   discount: z.number().min(0).default(0),

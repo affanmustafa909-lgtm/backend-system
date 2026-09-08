@@ -153,16 +153,16 @@ export class PharmacyErpService {
     }
 
     const trade = await this.db.select().from(pharmacyTradeCustomers).where(eq(pharmacyTradeCustomers.organizationId, organizationId)).limit(500);
-    for (const c of trade) push("tradeCustomer", c.code, c.id, c.name, "/pops/pharmacy/trade-customers", c.customerType);
+    for (const c of trade) push("tradeCustomer", c.code, c.id, c.name, "/pops/distribution/trade-customers", c.customerType);
 
     const territories = await this.db.select().from(pharmacyTerritories).where(eq(pharmacyTerritories.organizationId, organizationId)).limit(200);
-    for (const t of territories) push("territory", t.code, t.id, t.name, "/pops/pharmacy/geo");
+    for (const t of territories) push("territory", t.code, t.id, t.name, "/pops/distribution/geo");
     const cities = await this.db.select().from(pharmacyCities).where(eq(pharmacyCities.organizationId, organizationId)).limit(200);
-    for (const c of cities) push("city", c.code, c.id, c.name, "/pops/pharmacy/geo");
+    for (const c of cities) push("city", c.code, c.id, c.name, "/pops/distribution/geo");
     const areas = await this.db.select().from(pharmacyAreas).where(eq(pharmacyAreas.organizationId, organizationId)).limit(200);
-    for (const a of areas) push("area", a.code, a.id, a.name, "/pops/pharmacy/geo");
+    for (const a of areas) push("area", a.code, a.id, a.name, "/pops/distribution/geo");
     const routes = await this.db.select().from(pharmacyRoutes).where(eq(pharmacyRoutes.organizationId, organizationId)).limit(200);
-    for (const r of routes) push("route", r.code, r.id, r.name, "/pops/pharmacy/geo");
+    for (const r of routes) push("route", r.code, r.id, r.name, "/pops/distribution/geo");
 
     const sales = await this.db
       .select()
@@ -183,7 +183,7 @@ export class PharmacyErpService {
       .limit(200);
     for (const o of orders) {
       if (branch && o.branchId !== branch.id) continue;
-      push("distOrder", o.orderNumber, o.id, o.orderNumber, "/pops/pharmacy/distribution/orders", o.status);
+      push("distOrder", o.orderNumber, o.id, o.orderNumber, "/pops/distribution/orders", o.status);
     }
 
     const pos = await this.db
@@ -249,7 +249,7 @@ export class PharmacyErpService {
       .limit(200);
     for (const inv of distInvoices) {
       if (branch && inv.branchId !== branch.id) continue;
-      push("distInvoice", inv.invoiceNumber, inv.id, inv.invoiceNumber, "/pops/pharmacy/distribution/orders", inv.status);
+      push("distInvoice", inv.invoiceNumber, inv.id, inv.invoiceNumber, "/pops/distribution/orders", inv.status);
     }
 
     const deliveries = await this.db
@@ -260,7 +260,7 @@ export class PharmacyErpService {
       .limit(200);
     for (const d of deliveries) {
       if (branch && d.branchId !== branch.id) continue;
-      push("delivery", d.deliveryNumber, d.id, d.deliveryNumber, "/pops/pharmacy/distribution/deliveries", d.status);
+      push("delivery", d.deliveryNumber, d.id, d.deliveryNumber, "/pops/distribution/deliveries", d.status);
     }
 
     const collections = await this.db
@@ -271,7 +271,7 @@ export class PharmacyErpService {
       .limit(200);
     for (const c of collections) {
       if (branch && c.branchId !== branch.id) continue;
-      push("collection", c.collectionNumber, c.id, c.collectionNumber, "/pops/pharmacy/distribution/collections");
+      push("collection", c.collectionNumber, c.id, c.collectionNumber, "/pops/distribution/collections");
     }
 
     const priceLists = await this.db
@@ -279,14 +279,14 @@ export class PharmacyErpService {
       .from(pharmacyPriceLists)
       .where(eq(pharmacyPriceLists.organizationId, organizationId))
       .limit(200);
-    for (const pl of priceLists) push("priceList", pl.code, pl.id, pl.name, "/pops/pharmacy/pricing", pl.priceLevel);
+    for (const pl of priceLists) push("priceList", pl.code, pl.id, pl.name, "/pops/distribution/pricing", pl.priceLevel);
 
     const schemes = await this.db
       .select()
       .from(pharmacySchemes)
       .where(eq(pharmacySchemes.organizationId, organizationId))
       .limit(200);
-    for (const s of schemes) push("scheme", s.code, s.id, s.name, "/pops/pharmacy/pricing", s.schemeType);
+    for (const s of schemes) push("scheme", s.code, s.id, s.name, "/pops/distribution/pricing", s.schemeType);
 
     const exact = hits.filter((h) => h.code.toUpperCase() === q);
     return {

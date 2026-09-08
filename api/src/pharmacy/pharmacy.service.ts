@@ -47,6 +47,7 @@ import {
   pharmacyTradeCustomers,
   popsBankAccounts,
   popsBranches,
+  popsEmployees,
   popsExpenses,
   popsPurchaseOrders,
   popsSuppliers,
@@ -2092,6 +2093,10 @@ export class PharmacyService implements OnModuleInit {
         ? await this.db.select().from(pharmacyPatients).where(eq(pharmacyPatients.id, sale.patientId)).limit(1)
         : [];
 
+      const employee = sale.employeeId
+        ? await this.db.select().from(popsEmployees).where(eq(popsEmployees.id, sale.employeeId)).limit(1)
+        : [];
+
       const payments = parsePaymentsJson(sale.paymentsJson);
       if (payments.length === 0 && sale.amountPaidPkr > 0) {
         payments.push({ method: sale.paymentMethod, amount: sale.amountPaidPkr });
@@ -2104,6 +2109,12 @@ export class PharmacyService implements OnModuleInit {
         patientName: patient[0]?.name ?? null,
         prescriptionId: sale.prescriptionId,
         shiftId: sale.shiftId,
+        saleChannel: (sale.saleChannel as CreatePharmacySale["saleChannel"] | null) ?? null,
+        areaId: sale.areaId ?? null,
+        routeId: sale.routeId ?? null,
+        employeeId: sale.employeeId ?? null,
+        stationLabel: sale.stationLabel ?? null,
+        employeeName: employee[0]?.displayName ?? null,
         paymentMethod: sale.paymentMethod as CreatePharmacySale["paymentMethod"],
         payments,
         amountPaid: sale.amountPaidPkr,
@@ -2240,6 +2251,11 @@ export class PharmacyService implements OnModuleInit {
           prescriptionId: input.prescriptionId ?? null,
           shiftId: input.shiftId ?? null,
           cashierUserId: cashierUserId ?? null,
+          saleChannel: input.saleChannel ?? null,
+          areaId: input.areaId ?? null,
+          routeId: input.routeId ?? null,
+          employeeId: input.employeeId ?? null,
+          stationLabel: input.stationLabel ?? null,
           paymentMethod,
           paymentsJson: JSON.stringify(payments),
           amountPaidPkr: amountPaid,
