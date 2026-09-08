@@ -87,9 +87,66 @@ export class PharmacyErpController {
   @RequirePermissions("distribution.masters", "pops.inventory.manage")
   createCity(
     @CurrentUser() user: AccessJwtPayload,
-    @Body() body: { code: string; name: string; territoryId?: string },
+    @Body() body: { code: string; name: string; territoryId?: string; districtId?: string },
   ) {
     return this.erp.createCity(user.organizationId, body);
+  }
+
+  @Get("provinces")
+  @RequirePermissions("distribution.masters", "pharmacy.view", "pops.read")
+  listProvinces(@CurrentUser() user: AccessJwtPayload) {
+    return this.erp.listProvinces(user.organizationId);
+  }
+
+  @Post("provinces")
+  @RequirePermissions("distribution.masters", "pops.inventory.manage")
+  createProvince(@CurrentUser() user: AccessJwtPayload, @Body() body: { code: string; name: string }) {
+    return this.erp.createProvince(user.organizationId, body);
+  }
+
+  @Get("divisions")
+  @RequirePermissions("distribution.masters", "pharmacy.view", "pops.read")
+  listDivisions(@CurrentUser() user: AccessJwtPayload) {
+    return this.erp.listDivisions(user.organizationId);
+  }
+
+  @Post("divisions")
+  @RequirePermissions("distribution.masters", "pops.inventory.manage")
+  createDivision(
+    @CurrentUser() user: AccessJwtPayload,
+    @Body() body: { provinceId: string; code: string; name: string },
+  ) {
+    return this.erp.createDivision(user.organizationId, body);
+  }
+
+  @Get("districts")
+  @RequirePermissions("distribution.masters", "pharmacy.view", "pops.read")
+  listDistricts(@CurrentUser() user: AccessJwtPayload) {
+    return this.erp.listDistricts(user.organizationId);
+  }
+
+  @Post("districts")
+  @RequirePermissions("distribution.masters", "pops.inventory.manage")
+  createDistrict(
+    @CurrentUser() user: AccessJwtPayload,
+    @Body() body: { divisionId: string; code: string; name: string },
+  ) {
+    return this.erp.createDistrict(user.organizationId, body);
+  }
+
+  @Get("geo-territories")
+  @RequirePermissions("distribution.masters", "pharmacy.view", "pops.read")
+  listGeoTerritories(@CurrentUser() user: AccessJwtPayload) {
+    return this.erp.listGeoTerritories(user.organizationId);
+  }
+
+  @Post("geo-territories")
+  @RequirePermissions("distribution.masters", "pops.inventory.manage")
+  createGeoTerritory(
+    @CurrentUser() user: AccessJwtPayload,
+    @Body() body: { areaId: string; code: string; name: string; managerEmployeeId?: string },
+  ) {
+    return this.erp.createGeoTerritory(user.organizationId, body);
   }
 
   @Get("areas")
@@ -133,6 +190,7 @@ export class PharmacyErpController {
       station?: string;
       sequenceNo?: number;
       pjpDayOfWeek?: number | null;
+      geoTerritoryId?: string;
     },
   ) {
     return this.erp.createRoute(user.organizationId, body);
@@ -279,6 +337,42 @@ export class PharmacyErpController {
   @RequirePermissions("distribution.orders", "pops.inventory.manage")
   invoiceDistOrder(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string) {
     return this.erp.invoiceFromOrder(user.organizationId, id, user.sub);
+  }
+
+  @Post("distribution/orders/:id/advance")
+  @RequirePermissions("distribution.orders", "pops.inventory.manage")
+  advanceDistOrder(
+    @CurrentUser() user: AccessJwtPayload,
+    @Param("id") id: string,
+    @Body() body: { status: string },
+  ) {
+    return this.erp.advanceDistOrderStatus(user.organizationId, id, body.status);
+  }
+
+  @Get("distribution/ps-window")
+  @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
+  psWindow(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode?: string) {
+    return this.erp.getDistributionPsWindow(user.organizationId, branchCode?.trim());
+  }
+
+  @Get("distribution/reports/:reportId")
+  @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
+  runReport(
+    @CurrentUser() user: AccessJwtPayload,
+    @Param("reportId") reportId: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("cityId") cityId?: string,
+    @Query("areaId") areaId?: string,
+    @Query("branchCode") branchCode?: string,
+  ) {
+    return this.erp.runDistributionReport(user.organizationId, reportId, {
+      from,
+      to,
+      cityId,
+      areaId,
+      branchCode,
+    });
   }
 
   @Get("distribution/deliveries")

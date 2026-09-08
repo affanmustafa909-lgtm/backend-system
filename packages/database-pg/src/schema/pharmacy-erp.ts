@@ -58,12 +58,54 @@ export const pharmacyTerritories = pgTable("pharmacy_territories", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Province → Division → District sit above cities (district-level ERP geo). */
+export const pharmacyProvinces = pgTable("pharmacy_provinces", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const pharmacyDivisions = pgTable("pharmacy_divisions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  provinceId: uuid("province_id")
+    .notNull()
+    .references(() => pharmacyProvinces.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const pharmacyDistricts = pgTable("pharmacy_districts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  divisionId: uuid("division_id")
+    .notNull()
+    .references(() => pharmacyDivisions.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const pharmacyCities = pgTable("pharmacy_cities", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id")
     .notNull()
     .references(() => organizations.id, { onDelete: "cascade" }),
+  /** Legacy sales-region link (kept for backward compatibility). */
   territoryId: uuid("territory_id").references(() => pharmacyTerritories.id, { onDelete: "set null" }),
+  districtId: uuid("district_id").references(() => pharmacyDistricts.id, { onDelete: "set null" }),
   code: text("code").notNull(),
   name: text("name").notNull(),
   status: text("status").notNull().default("active"),
@@ -87,6 +129,24 @@ export const pharmacyAreas = pgTable("pharmacy_areas", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Beat territory under an area (Province…City→Area→Territory→Route). */
+export const pharmacyGeoTerritories = pgTable("pharmacy_geo_territories", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  areaId: uuid("area_id")
+    .notNull()
+    .references(() => pharmacyAreas.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  status: text("status").notNull().default("active"),
+  managerEmployeeId: uuid("manager_employee_id").references(() => popsEmployees.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const pharmacyRoutes = pgTable("pharmacy_routes", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id")
@@ -95,6 +155,9 @@ export const pharmacyRoutes = pgTable("pharmacy_routes", {
   areaId: uuid("area_id")
     .notNull()
     .references(() => pharmacyAreas.id, { onDelete: "cascade" }),
+  geoTerritoryId: uuid("geo_territory_id").references(() => pharmacyGeoTerritories.id, {
+    onDelete: "set null",
+  }),
   code: text("code").notNull(),
   name: text("name").notNull(),
   station: text("station"),
@@ -387,7 +450,16 @@ export const pharmacyDistOrders = pgTable("pharmacy_dist_orders", {
   creditOverride: boolean("credit_override").notNull().default(false),
   notes: text("notes"),
   createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  bookedAt: timestamp("booked_at", { withTimezone: true }),
   approvedAt: timestamp("approved_at", { withTimezone: true }),
+  stockReservedAt: timestamp("stock_reserved_at", { withTimezone: true }),
+  invoicedAt: timestamp("invoiced_at", { withTimezone: true }),
+  pickingAt: timestamp("picking_at", { withTimezone: true }),
+  packedAt: timestamp("packed_at", { withTimezone: true }),
+  readyAt: timestamp("ready_at", { withTimezone: true }),
+  dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
