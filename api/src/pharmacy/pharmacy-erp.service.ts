@@ -1273,6 +1273,27 @@ export class PharmacyErpService {
       .orderBy(desc(pharmacyDistOrders.createdAt));
   }
 
+  async listDistInvoices(organizationId: string, branchCode?: string) {
+    if (branchCode) {
+      const branch = await this.resolveBranch(organizationId, branchCode);
+      return this.db
+        .select()
+        .from(pharmacyDistInvoices)
+        .where(
+          and(
+            eq(pharmacyDistInvoices.organizationId, organizationId),
+            eq(pharmacyDistInvoices.branchId, branch.id),
+          ),
+        )
+        .orderBy(desc(pharmacyDistInvoices.createdAt));
+    }
+    return this.db
+      .select()
+      .from(pharmacyDistInvoices)
+      .where(eq(pharmacyDistInvoices.organizationId, organizationId))
+      .orderBy(desc(pharmacyDistInvoices.createdAt));
+  }
+
   async createDistOrder(organizationId: string, input: CreatePharmacyDistOrder, userId?: string) {
     const branch = await this.resolveBranch(organizationId, input.branchCode);
     const [customer] = await this.db
@@ -2697,6 +2718,108 @@ export class PharmacyErpService {
         reportId,
         columns: ["city", "orders", "salesPkr"],
         rows: [...map.values()].sort((a, b) => b.salesPkr - a.salesPkr),
+      };
+    }
+
+    if (reportId === "area-sales") {
+      const orders = await this.db
+        .select({
+          totalPkr: pharmacyDistOrders.totalPkr,
+          tradeCustomerId: pharmacyDistOrders.tradeCustomerId,
+          createdAt: pharmacyDistOrders.createdAt,
+          status: pharmacyDistOrders.status,
+        })
+        .from(pharmacyDistOrders)
+        .where(eq(pharmacyDistOrders.organizationId, organizationId));
+      const customers = await this.listTradeCustomers(organizationId);
+      const areas = await this.listAreas(organizationId);
+      const custById = new Map(customers.map((c) => [c.id, c]));
+      const areaById = new Map(areas.map((a) => [a.id, a]));
+      const map = new Map<string, { area: string; orders: number; salesPkr: number }>();
+      for (const o of orders) {
+        if (from && o.createdAt.toISOString().slice(0, 10) < from) continue;
+        if (to && o.createdAt.toISOString().slice(0, 10) > to) continue;
+        if (["cancelled", "draft"].includes(o.status)) continue;
+        const cust = custById.get(o.tradeCustomerId);
+        if (filters.areaId && cust?.areaId !== filters.areaId) continue;
+        if (filters.cityId) {
+          const area = cust?.areaId ? areaById.get(cust.areaId) : null;
+          if (!area || area.cityId !== filters.cityId) continue;
+        }
+        const areaName = cust?.areaId ? areaById.get(cust.areaId)?.name ?? "Unassigned" : "Unassigned";
+        const cur = map.get(areaName) ?? { area: areaName, orders: 0, salesPkr: 0 };
+        cur.orders += 1;
+        cur.salesPkr += o.totalPkr ?? 0;
+        map.set(areaName, cur);
+      }
+      return {
+        reportId,
+        columns: ["area", "orders", "salesPkr"],
+        rows: [...map.values()].sort((a, b) => b.salesPkr - a.salesPkr),
+      };
+    }
+
+    if (reportId === "status-pipeline") {
+      const conds = [eq(pharmacyDistOrders.organizationId, organizationId)];
+      if (branch) conds.push(eq(pharmacyDistOrders.branchId, branch.id));
+      const orders = await this.db
+        .select({ status: pharmacyDistOrders.status, totalPkr: pharmacyDistOrders.totalPkr })
+        .from(pharmacyDistOrders)
+        .where(and(...conds));
+      const map = new Map<string, { status: string; count: number; totalPkr: number }>();
+      for (const o of orders) {
+        const cur = map.get(o.status) ?? { status: o.status, count: 0, totalPkr: 0 };
+        cur.count += 1;
+        cur.totalPkr += o.totalPkr ?? 0;
+        map.set(o.status, cur);
+      }
+      return {
+        reportId,
+        columns: ["status", "count", "totalPkr"],
+        rows: [...map.values()].sort((a, b) => b.count - a.count),
+      };
+    }
+
+    if (reportId === "collections-summary") {
+      const conds = [eq(pharmacyCollections.organizationId, organizationId)];
+      if (branch) conds.push(eq(pharmacyCollections.branchId, branch.id));
+      if (from) conds.push(gte(pharmacyCollections.createdAt, new Date(`${from}T00:00:00.000Z`)));
+      if (to) conds.push(lte(pharmacyCollections.createdAt, new Date(`${to}T23:59:59.999Z`)));
+      const rows = await this.db
+        .select({
+          collectionNumber: pharmacyCollections.collectionNumber,
+          amountPkr: pharmacyCollections.amountPkr,
+          paymentMethod: pharmacyCollections.paymentMethod,
+          createdAt: pharmacyCollections.createdAt,
+        })
+        .from(pharmacyCollections)
+        .where(and(...conds))
+        .orderBy(desc(pharmacyCollections.createdAt))
+        .limit(500);
+      return {
+        reportId,
+        columns: ["collectionNumber", "amountPkr", "paymentMethod", "createdAt"],
+        rows,
+      };
+    }
+
+    if (reportId === "delivery-status") {
+      const conds = [eq(pharmacyDeliveries.organizationId, organizationId)];
+      if (branch) conds.push(eq(pharmacyDeliveries.branchId, branch.id));
+      const deliveries = await this.db
+        .select({ status: pharmacyDeliveries.status })
+        .from(pharmacyDeliveries)
+        .where(and(...conds));
+      const map = new Map<string, { status: string; count: number }>();
+      for (const d of deliveries) {
+        const cur = map.get(d.status) ?? { status: d.status, count: 0 };
+        cur.count += 1;
+        map.set(d.status, cur);
+      }
+      return {
+        reportId,
+        columns: ["status", "count"],
+        rows: [...map.values()].sort((a, b) => b.count - a.count),
       };
     }
 
