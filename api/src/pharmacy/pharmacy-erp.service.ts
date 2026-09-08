@@ -2409,91 +2409,88 @@ export class PharmacyErpService {
     const branch = branchCode?.trim()
       ? await this.resolveBranch(organizationId, branchCode.trim())
       : null;
-    const today = new Date().toISOString().slice(0, 10);
-    const orderConds = [eq(pharmacyDistOrders.organizationId, organizationId)];
-    if (branch) orderConds.push(eq(pharmacyDistOrders.branchId, branch.id));
-
-    const orders = await this.db
-      .select({
-        status: pharmacyDistOrders.status,
-        totalPkr: pharmacyDistOrders.totalPkr,
-        createdAt: pharmacyDistOrders.createdAt,
-      })
-      .from(pharmacyDistOrders)
-      .where(and(...orderConds));
-
-    const todayOrders = orders.filter((o) => o.createdAt.toISOString().slice(0, 10) === today);
-    const pendingApproval = orders.filter((o) =>
-      ["draft", "booked", "submitted"].includes(o.status),
-    ).length;
-    const pipeline = orders.filter((o) =>
-      ["approved", "stock_reserved", "picking", "packed", "ready_for_dispatch"].includes(o.status),
-    ).length;
-
-    const deliveryConds = [eq(pharmacyDeliveries.organizationId, organizationId)];
-    if (branch) deliveryConds.push(eq(pharmacyDeliveries.branchId, branch.id));
-    const deliveries = await this.db
-      .select({ status: pharmacyDeliveries.status })
-      .from(pharmacyDeliveries)
-      .where(and(...deliveryConds));
-    const pendingDeliveries = deliveries.filter((d) => d.status !== "delivered").length;
-
-    const customers = await this.db
-      .select({ outstandingPkr: pharmacyTradeCustomers.outstandingPkr })
-      .from(pharmacyTradeCustomers)
-      .where(eq(pharmacyTradeCustomers.organizationId, organizationId));
-    const outstandingPkr = customers.reduce((s, c) => s + (c.outstandingPkr ?? 0), 0);
-    const overdueAccounts = customers.filter((c) => (c.outstandingPkr ?? 0) > 0).length;
-
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
     const in30 = new Date();
     in30.setDate(in30.getDate() + 30);
-    const nearExpiryRows = await this.db
-      .select({ id: pharmacyMedicineBatches.id })
+    const expiryTo = in30.toISOString().slice(0, 10);
+
+    const orderOrg = eq(pharmacyDistOrders.organizationId, organizationId);
+    const orderWhere = branch
+      ? and(orderOrg, eq(pharmacyDistOrders.branchId, branch.id))
+      : orderOrg;
+
+    const [orderAgg] = await this.db
+      .select({
+        ordersToday: sql<number>`count(*) filter (where ${pharmacyDistOrders.createdAt} >= ${todayStart})::int`,
+        salesTodayPkr: sql<number>`coalesce(sum(${pharmacyDistOrders.totalPkr}) filter (where ${pharmacyDistOrders.createdAt} >= ${todayStart}), 0)::int`,
+        pendingApproval: sql<number>`count(*) filter (where ${pharmacyDistOrders.status} in ('draft','booked','submitted'))::int`,
+        inWarehousePipeline: sql<number>`count(*) filter (where ${pharmacyDistOrders.status} in ('approved','stock_reserved','picking','packed','ready_for_dispatch'))::int`,
+      })
+      .from(pharmacyDistOrders)
+      .where(orderWhere);
+
+    const deliveryOrg = eq(pharmacyDeliveries.organizationId, organizationId);
+    const deliveryWhere = branch
+      ? and(deliveryOrg, eq(pharmacyDeliveries.branchId, branch.id))
+      : deliveryOrg;
+    const [deliveryAgg] = await this.db
+      .select({
+        pendingDeliveries: sql<number>`count(*) filter (where ${pharmacyDeliveries.status} <> 'delivered')::int`,
+      })
+      .from(pharmacyDeliveries)
+      .where(deliveryWhere);
+
+    const [custAgg] = await this.db
+      .select({
+        outstandingPkr: sql<number>`coalesce(sum(${pharmacyTradeCustomers.outstandingPkr}), 0)::int`,
+        overdueAccounts: sql<number>`count(*) filter (where ${pharmacyTradeCustomers.outstandingPkr} > 0)::int`,
+      })
+      .from(pharmacyTradeCustomers)
+      .where(eq(pharmacyTradeCustomers.organizationId, organizationId));
+
+    const [expiryAgg] = await this.db
+      .select({ nearExpiryBatches: sql<number>`count(*)::int` })
       .from(pharmacyMedicineBatches)
       .innerJoin(pharmacyMedicines, eq(pharmacyMedicineBatches.medicineId, pharmacyMedicines.id))
       .where(
         and(
           eq(pharmacyMedicines.organizationId, organizationId),
           gte(pharmacyMedicineBatches.quantity, 1),
-          lte(pharmacyMedicineBatches.expiryDate, in30.toISOString().slice(0, 10)),
+          lte(pharmacyMedicineBatches.expiryDate, expiryTo),
         ),
-      )
-      .limit(500);
+      );
 
-    const visitConds = [eq(pharmacyVisits.organizationId, organizationId)];
-    const visits = await this.db.select({ visitedAt: pharmacyVisits.visitedAt }).from(pharmacyVisits).where(and(...visitConds));
-    const visitsToday = visits.filter((v) => v.visitedAt && v.visitedAt.toISOString().slice(0, 10) === today)
-      .length;
+    const [visitAgg] = await this.db
+      .select({
+        visitsToday: sql<number>`count(*) filter (where ${pharmacyVisits.visitedAt} >= ${todayStart})::int`,
+      })
+      .from(pharmacyVisits)
+      .where(eq(pharmacyVisits.organizationId, organizationId));
+
+    const assignmentConds = [eq(pharmacyAssignments.organizationId, organizationId)];
+    if (branch) assignmentConds.push(eq(pharmacyAssignments.branchId, branch.id));
+    const [assignAgg] = await this.db
+      .select({ assignmentsOpen: sql<number>`count(*)::int` })
+      .from(pharmacyAssignments)
+      .where(and(...assignmentConds));
 
     return {
       sales: {
-        ordersToday: todayOrders.length,
-        salesTodayPkr: todayOrders.reduce((s, o) => s + (o.totalPkr ?? 0), 0),
-        pendingApproval,
-        inWarehousePipeline: pipeline,
+        ordersToday: orderAgg?.ordersToday ?? 0,
+        salesTodayPkr: orderAgg?.salesTodayPkr ?? 0,
+        pendingApproval: orderAgg?.pendingApproval ?? 0,
+        inWarehousePipeline: orderAgg?.inWarehousePipeline ?? 0,
       },
-      stock: {
-        nearExpiryBatches: nearExpiryRows.length,
-      },
+      stock: { nearExpiryBatches: expiryAgg?.nearExpiryBatches ?? 0 },
       distribution: {
-        pendingDeliveries,
-        outstandingPkr,
-        overdueAccounts,
+        pendingDeliveries: deliveryAgg?.pendingDeliveries ?? 0,
+        outstandingPkr: custAgg?.outstandingPkr ?? 0,
+        overdueAccounts: custAgg?.overdueAccounts ?? 0,
       },
       field: {
-        visitsToday,
-        assignmentsOpen: (
-          await this.db
-            .select({ id: pharmacyAssignments.id })
-            .from(pharmacyAssignments)
-            .where(
-              and(
-                eq(pharmacyAssignments.organizationId, organizationId),
-                ...(branch ? [eq(pharmacyAssignments.branchId, branch.id)] : []),
-              ),
-            )
-            .limit(200)
-        ).length,
+        visitsToday: visitAgg?.visitsToday ?? 0,
+        assignmentsOpen: assignAgg?.assignmentsOpen ?? 0,
       },
     };
   }
