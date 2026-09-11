@@ -32,6 +32,7 @@ export const PHARMACY_CODE_PREFIXES = {
   assignment: "ASN",
   visit: "VIS",
   target: "TGT",
+  pjp: "PJP",
   batch: "BAT",
   wholesaleReturn: "WRN",
   doctorCommission: "DCR",
@@ -68,6 +69,9 @@ export const PHARMACY_CODE_CATALOG: {
   { module: "priceList", prefix: "PL", label: "Price lists", path: "/pops/distribution/pricing" },
   { module: "scheme", prefix: "SCH", label: "Schemes", path: "/pops/distribution/pricing" },
   { module: "assignment", prefix: "ASN", label: "Assignments", path: "/pops/distribution/assignments" },
+  { module: "visit", prefix: "VIS", label: "Visits", path: "/pops/distribution/visits" },
+  { module: "pjp", prefix: "PJP", label: "PJP", path: "/pops/distribution/pjp" },
+  { module: "target", prefix: "TGT", label: "Targets", path: "/pops/distribution/targets" },
   { module: "wholesaleReturn", prefix: "WRN", label: "Wholesale returns", path: "/pops/distribution/wholesale-returns" },
   { module: "doctorCommission", prefix: "DCR", label: "Doctor commission", path: "/pops/pharmacy/doctors" },
 ];

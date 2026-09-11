@@ -273,7 +273,14 @@ export const pharmacyRoutes = pgTable("pharmacy_routes", {
   pjpDayOfWeek: integer("pjp_day_of_week"),
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  salesmanEmployeeId: uuid("salesman_employee_id").references(() => popsEmployees.id, {
+    onDelete: "set null",
+  }),
+  branchId: uuid("branch_id").references(() => popsBranches.id, { onDelete: "set null" }),
+}, (t) => [
+  index("pharmacy_routes_org_status_idx").on(t.organizationId, t.status),
+  index("pharmacy_routes_org_salesman_idx").on(t.organizationId, t.salesmanEmployeeId),
+]);
 
 export const pharmacyTradeCustomers = pgTable("pharmacy_trade_customers", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -324,7 +331,26 @@ export const pharmacySalesForceProfiles = pgTable("pharmacy_sales_force_profiles
   areaId: uuid("area_id").references(() => pharmacyAreas.id, { onDelete: "set null" }),
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  /** Phase 8 — field operating profile (employee remains the identity). */
+  branchId: uuid("branch_id").references(() => popsBranches.id, { onDelete: "set null" }),
+  managerEmployeeId: uuid("manager_employee_id").references(() => popsEmployees.id, {
+    onDelete: "set null",
+  }),
+  primaryRouteId: uuid("primary_route_id").references(() => pharmacyRoutes.id, { onDelete: "set null" }),
+  geoTerritoryId: uuid("geo_territory_id").references(() => pharmacyGeoTerritories.id, {
+    onDelete: "set null",
+  }),
+  dailyVisitTarget: integer("daily_visit_target").notNull().default(0),
+  monthlySalesTargetPkr: integer("monthly_sales_target_pkr").notNull().default(0),
+  monthlyCollectionTargetPkr: integer("monthly_collection_target_pkr").notNull().default(0),
+  visitFrequency: text("visit_frequency"),
+  workingDays: text("working_days"),
+  notes: text("notes"),
+}, (t) => [
+  uniqueIndex("pharmacy_sf_org_employee_uq").on(t.organizationId, t.employeeId),
+  index("pharmacy_sf_org_status_idx").on(t.organizationId, t.status),
+  index("pharmacy_sf_org_territory_idx").on(t.organizationId, t.territoryId),
+]);
 
 export const pharmacyStockMovements = pgTable("pharmacy_stock_movements", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -1324,8 +1350,44 @@ export const pharmacyVisits = pgTable("pharmacy_visits", {
   collectionId: uuid("collection_id").references(() => pharmacyCollections.id, { onDelete: "set null" }),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  visitNumber: text("visit_number"),
+  plannedDate: date("planned_date"),
+  plannedSequence: integer("planned_sequence").notNull().default(0),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  outcome: text("outcome"),
+  contactPerson: text("contact_person"),
+  customerFeedback: text("customer_feedback"),
+  followUpRequired: boolean("follow_up_required").notNull().default(false),
+  followUpDate: date("follow_up_date"),
+  followUpAction: text("follow_up_action"),
+  nextVisitDate: date("next_visit_date"),
+  pjpId: uuid("pjp_id"),
+  pjpVersion: integer("pjp_version"),
+  routeId: uuid("route_id").references(() => pharmacyRoutes.id, { onDelete: "set null" }),
+  territoryId: uuid("territory_id").references(() => pharmacyTerritories.id, { onDelete: "set null" }),
+  branchId: uuid("branch_id").references(() => popsBranches.id, { onDelete: "set null" }),
+  rescheduledFromId: uuid("rescheduled_from_id"),
+  reason: text("reason"),
+  latitude: text("latitude"),
+  longitude: text("longitude"),
+  locationAccuracy: text("location_accuracy"),
+  locationCapturedAt: timestamp("location_captured_at", { withTimezone: true }),
+  idempotencyKey: text("idempotency_key"),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
 }, (t) => [
   index("pharmacy_visits_org_visited_idx").on(t.organizationId, t.visitedAt),
+  uniqueIndex("pharmacy_visits_org_number_uq").on(t.organizationId, t.visitNumber),
+  uniqueIndex("pharmacy_visits_org_idem_uq").on(t.organizationId, t.idempotencyKey),
+  uniqueIndex("pharmacy_visits_plan_uq").on(
+    t.organizationId,
+    t.employeeId,
+    t.tradeCustomerId,
+    t.plannedDate,
+  ),
+  index("pharmacy_visits_org_emp_date_idx").on(t.organizationId, t.employeeId, t.plannedDate),
+  index("pharmacy_visits_org_status_date_idx").on(t.organizationId, t.status, t.plannedDate),
+  index("pharmacy_visits_org_customer_idx").on(t.organizationId, t.tradeCustomerId),
 ]);
 
 export const pharmacyTargets = pgTable("pharmacy_targets", {
@@ -1345,10 +1407,28 @@ export const pharmacyTargets = pgTable("pharmacy_targets", {
   actualSalesPkr: integer("actual_sales_pkr").notNull().default(0),
   actualCollectionPkr: integer("actual_collection_pkr").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  targetNumber: text("target_number"),
+  territoryId: uuid("territory_id").references(() => pharmacyTerritories.id, { onDelete: "set null" }),
+  routeId: uuid("route_id").references(() => pharmacyRoutes.id, { onDelete: "set null" }),
+  branchId: uuid("branch_id").references(() => popsBranches.id, { onDelete: "set null" }),
+  targetVisits: integer("target_visits").notNull().default(0),
+  scopeType: text("scope_type").notNull().default("salesman"),
+  version: integer("version").notNull().default(1),
+  previousTargetId: uuid("previous_target_id"),
+  changeReason: text("change_reason"),
+  status: text("status").notNull().default("active"),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
 }, (t) => [
   index("pharmacy_targets_org_employee_period_idx").on(
     t.organizationId,
     t.employeeId,
+    t.periodStart,
+    t.periodEnd,
+  ),
+  uniqueIndex("pharmacy_targets_org_number_uq").on(t.organizationId, t.targetNumber),
+  index("pharmacy_targets_org_scope_period_idx").on(
+    t.organizationId,
+    t.scopeType,
     t.periodStart,
     t.periodEnd,
   ),
@@ -1459,3 +1539,137 @@ export const pharmacyWholesaleReturnLines = pgTable("pharmacy_wholesale_return_l
   unitPricePkr: integer("unit_price_pkr").notNull().default(0),
   lineTotalPkr: integer("line_total_pkr").notNull().default(0),
 });
+
+/** Phase 8 — extra routes beyond the salesman's primary route. */
+export const pharmacySalesmanRoutes = pgTable("pharmacy_salesman_routes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  employeeId: uuid("employee_id")
+    .notNull()
+    .references(() => popsEmployees.id, { onDelete: "cascade" }),
+  routeId: uuid("route_id")
+    .notNull()
+    .references(() => pharmacyRoutes.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("pharmacy_salesman_routes_uq").on(t.organizationId, t.employeeId, t.routeId),
+]);
+
+/** Ordered customers on a route (practical visit sequence — not GPS-optimized). */
+export const pharmacyRouteCustomers = pgTable("pharmacy_route_customers", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  routeId: uuid("route_id")
+    .notNull()
+    .references(() => pharmacyRoutes.id, { onDelete: "cascade" }),
+  tradeCustomerId: uuid("trade_customer_id")
+    .notNull()
+    .references(() => pharmacyTradeCustomers.id, { onDelete: "cascade" }),
+  sequenceNo: integer("sequence_no").notNull().default(0),
+  preferredVisitDay: integer("preferred_visit_day"),
+  visitFrequency: text("visit_frequency").notNull().default("weekly"),
+  priority: text("priority").notNull().default("normal"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("pharmacy_route_customers_uq").on(t.organizationId, t.routeId, t.tradeCustomerId),
+  index("pharmacy_route_customers_route_seq_idx").on(t.routeId, t.sequenceNo),
+]);
+
+export const pharmacyPjps = pgTable("pharmacy_pjps", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id").references(() => popsBranches.id, { onDelete: "set null" }),
+  pjpNumber: text("pjp_number").notNull(),
+  name: text("name").notNull(),
+  employeeId: uuid("employee_id")
+    .notNull()
+    .references(() => popsEmployees.id, { onDelete: "restrict" }),
+  territoryId: uuid("territory_id").references(() => pharmacyTerritories.id, { onDelete: "set null" }),
+  routeId: uuid("route_id").references(() => pharmacyRoutes.id, { onDelete: "set null" }),
+  effectiveFrom: date("effective_from").notNull(),
+  effectiveTo: date("effective_to"),
+  status: text("status").notNull().default("active"),
+  frequency: text("frequency").notNull().default("weekly"),
+  workingDays: text("working_days"),
+  version: integer("version").notNull().default(1),
+  previousPjpId: uuid("previous_pjp_id"),
+  changeReason: text("change_reason"),
+  notes: text("notes"),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("pharmacy_pjps_org_number_uq").on(t.organizationId, t.pjpNumber),
+  index("pharmacy_pjps_org_emp_status_idx").on(t.organizationId, t.employeeId, t.status),
+  index("pharmacy_pjps_org_effective_idx").on(t.organizationId, t.effectiveFrom, t.effectiveTo),
+]);
+
+export const pharmacyPjpLines = pgTable("pharmacy_pjp_lines", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  pjpId: uuid("pjp_id")
+    .notNull()
+    .references(() => pharmacyPjps.id, { onDelete: "cascade" }),
+  dayOfWeek: integer("day_of_week"),
+  tradeCustomerId: uuid("trade_customer_id")
+    .notNull()
+    .references(() => pharmacyTradeCustomers.id, { onDelete: "restrict" }),
+  routeId: uuid("route_id").references(() => pharmacyRoutes.id, { onDelete: "set null" }),
+  sequenceNo: integer("sequence_no").notNull().default(0),
+  visitType: text("visit_type").notNull().default("regular"),
+  priority: text("priority").notNull().default("normal"),
+  plannedDurationMin: integer("planned_duration_min"),
+  notes: text("notes"),
+}, (t) => [
+  index("pharmacy_pjp_lines_pjp_day_idx").on(t.pjpId, t.dayOfWeek, t.sequenceNo),
+]);
+
+/** Shared Dist import/export jobs. No second import engine per module. */
+export const pharmacyIoJobs = pgTable(
+  "pharmacy_io_jobs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    branchId: uuid("branch_id").references(() => popsBranches.id, { onDelete: "set null" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    kind: text("kind").notNull(), // import | export
+    module: text("module").notNull(),
+    fileName: text("file_name"),
+    status: text("status").notNull().default("queued"),
+    totalRows: integer("total_rows").notNull().default(0),
+    importedRows: integer("imported_rows").notNull().default(0),
+    failedRows: integer("failed_rows").notNull().default(0),
+    duplicateRows: integer("duplicate_rows").notNull().default(0),
+    skippedRows: integer("skipped_rows").notNull().default(0),
+    mappingJson: text("mapping_json"),
+    errorJson: text("error_json"),
+    filtersJson: text("filters_json"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (t) => [index("pharmacy_io_jobs_org_created_idx").on(t.organizationId, t.createdAt)],
+);
+
+export const pharmacyFieldForceAudits = pgTable("pharmacy_field_force_audits", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  entityType: text("entity_type").notNull(),
+  entityId: uuid("entity_id").notNull(),
+  action: text("action").notNull(),
+  oldValue: text("old_value"),
+  newValue: text("new_value"),
+  reason: text("reason"),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("pharmacy_ff_audits_org_entity_idx").on(t.organizationId, t.entityType, t.entityId),
+]);

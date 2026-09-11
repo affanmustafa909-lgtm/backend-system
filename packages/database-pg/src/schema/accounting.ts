@@ -1,54 +1,79 @@
-import { boolean, date, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 import { popsBranches } from "./operations";
 import { popsSuppliers } from "./inventory";
 
-export const popsAccounts = pgTable("pops_accounts", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  organizationId: uuid("organization_id")
-    .notNull()
-    .references(() => organizations.id, { onDelete: "cascade" }),
-  branchId: uuid("branch_id")
-    .notNull()
-    .references(() => popsBranches.id, { onDelete: "cascade" }),
-  code: text("code").notNull(),
-  name: text("name").notNull(),
-  type: text("type").notNull(), // asset | liability | income | expense | equity
-  subtype: text("subtype"),
-  active: boolean("active").notNull().default(true),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const popsAccounts = pgTable(
+  "pops_accounts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    branchId: uuid("branch_id")
+      .notNull()
+      .references(() => popsBranches.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    type: text("type").notNull(), // asset | liability | income | expense | equity
+    subtype: text("subtype"),
+    parentAccountId: uuid("parent_account_id"),
+    description: text("description"),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("pops_accounts_org_branch_code_uq").on(t.organizationId, t.branchId, t.code),
+    index("pops_accounts_org_branch_idx").on(t.organizationId, t.branchId),
+  ],
+);
 
-export const popsJournalEntries = pgTable("pops_journal_entries", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  organizationId: uuid("organization_id")
-    .notNull()
-    .references(() => organizations.id, { onDelete: "cascade" }),
-  branchId: uuid("branch_id")
-    .notNull()
-    .references(() => popsBranches.id, { onDelete: "cascade" }),
-  entryRef: text("entry_ref").notNull(),
-  entryDate: date("entry_date").notNull(),
-  source: text("source").notNull(), // sale | purchase | expense | payroll | cash | bank | manual | cogs | waste | adjustment
-  sourceRef: text("source_ref"),
-  description: text("description").notNull(),
-  status: text("status").notNull().default("posted"), // draft | posted | void
-  createdBy: text("created_by"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const popsJournalEntries = pgTable(
+  "pops_journal_entries",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    branchId: uuid("branch_id")
+      .notNull()
+      .references(() => popsBranches.id, { onDelete: "cascade" }),
+    entryRef: text("entry_ref").notNull(),
+    entryDate: date("entry_date").notNull(),
+    source: text("source").notNull(), // sale | purchase | expense | payroll | cash | bank | manual | cogs | waste | adjustment | dist_*
+    sourceRef: text("source_ref"),
+    description: text("description").notNull(),
+    status: text("status").notNull().default("posted"), // draft | posted | void
+    reversedFromEntryId: uuid("reversed_from_entry_id"),
+    reverseReason: text("reverse_reason"),
+    reversedBy: text("reversed_by"),
+    reversedAt: timestamp("reversed_at", { withTimezone: true }),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("pops_journal_org_source_ref_uq").on(t.organizationId, t.source, t.sourceRef),
+    index("pops_journal_org_branch_date_idx").on(t.organizationId, t.branchId, t.entryDate),
+    index("pops_journal_org_source_idx").on(t.organizationId, t.source, t.sourceRef),
+  ],
+);
 
-export const popsJournalLines = pgTable("pops_journal_lines", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  entryId: uuid("entry_id")
-    .notNull()
-    .references(() => popsJournalEntries.id, { onDelete: "cascade" }),
-  accountId: uuid("account_id")
-    .notNull()
-    .references(() => popsAccounts.id, { onDelete: "restrict" }),
-  debitPkr: integer("debit_pkr").notNull().default(0),
-  creditPkr: integer("credit_pkr").notNull().default(0),
-  memo: text("memo"),
-});
+export const popsJournalLines = pgTable(
+  "pops_journal_lines",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    entryId: uuid("entry_id")
+      .notNull()
+      .references(() => popsJournalEntries.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => popsAccounts.id, { onDelete: "restrict" }),
+    debitPkr: integer("debit_pkr").notNull().default(0),
+    creditPkr: integer("credit_pkr").notNull().default(0),
+    memo: text("memo"),
+  },
+  (t) => [index("pops_journal_lines_account_idx").on(t.accountId, t.entryId)],
+);
 
 export const popsExpenses = pgTable("pops_expenses", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -110,6 +135,9 @@ export const popsBankTransactions = pgTable("pops_bank_transactions", {
     onDelete: "set null",
   }),
   journalEntryId: uuid("journal_entry_id").references(() => popsJournalEntries.id, { onDelete: "set null" }),
+  matchedStatus: text("matched_status").notNull().default("unmatched"), // unmatched | matched
+  statementRef: text("statement_ref"),
+  statementDate: date("statement_date"),
   createdBy: text("created_by"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -267,6 +295,33 @@ export const popsPayrollRuns = pgTable("pops_payroll_runs", {
   createdBy: text("created_by"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Branch-scoped accounting periods. Closed periods reject new postings. */
+export const popsFinancialPeriods = pgTable(
+  "pops_financial_periods",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    branchId: uuid("branch_id")
+      .notNull()
+      .references(() => popsBranches.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date").notNull(),
+    status: text("status").notNull().default("open"), // open | closed
+    closedBy: text("closed_by"),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    reopenedBy: text("reopened_by"),
+    reopenedAt: timestamp("reopened_at", { withTimezone: true }),
+    reopenReason: text("reopen_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("pops_financial_periods_org_branch_idx").on(t.organizationId, t.branchId, t.startDate),
+  ],
+);
 
 export const popsAccountingAuditLogs = pgTable("pops_accounting_audit_logs", {
   id: uuid("id").defaultRandom().primaryKey(),

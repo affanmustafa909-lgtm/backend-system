@@ -1241,3 +1241,169 @@ export type CreatePharmacyVehicle = z.infer<typeof createPharmacyVehicleSchema>;
 export type CreatePharmacyDelivery = z.infer<typeof createPharmacyDeliverySchema>;
 export type CreatePharmacyCollection = z.infer<typeof createPharmacyCollectionSchema>;
 export type CreatePharmacyPromiseToPay = z.infer<typeof createPharmacyPromiseToPaySchema>;
+
+// ─── Phase 8 field force ───────────────────────────────────────────────────
+
+export const fieldForceSalesmanStatusSchema = z.enum(["active", "inactive", "suspended", "on_leave"]);
+export const fieldForceVisitStatusSchema = z.enum([
+  "planned",
+  "started",
+  "completed",
+  "missed",
+  "cancelled",
+  "rescheduled",
+]);
+export const fieldForceVisitOutcomeSchema = z.enum([
+  "order_taken",
+  "collection_received",
+  "order_and_collection",
+  "follow_up_required",
+  "customer_not_available",
+  "customer_closed",
+  "customer_refused",
+  "no_order",
+  "other",
+]);
+export const fieldForcePjpFrequencySchema = z.enum(["daily", "weekly", "biweekly", "monthly", "custom"]);
+export const fieldForceTargetScopeSchema = z.enum(["salesman", "territory", "route", "branch"]);
+
+export const upsertFieldForceSalesmanSchema = z.object({
+  employeeId: z.string().uuid(),
+  fieldRole: z.string().optional(),
+  branchCode: z.string().optional(),
+  territoryId: z.string().uuid().nullable().optional(),
+  cityId: z.string().uuid().nullable().optional(),
+  areaId: z.string().uuid().nullable().optional(),
+  geoTerritoryId: z.string().uuid().nullable().optional(),
+  primaryRouteId: z.string().uuid().nullable().optional(),
+  extraRouteIds: z.array(z.string().uuid()).optional(),
+  managerEmployeeId: z.string().uuid().nullable().optional(),
+  dailyVisitTarget: z.number().int().min(0).optional(),
+  monthlySalesTargetPkr: z.number().int().min(0).optional(),
+  monthlyCollectionTargetPkr: z.number().int().min(0).optional(),
+  visitFrequency: z.string().optional(),
+  workingDays: z.string().optional(),
+  notes: z.string().optional(),
+  status: fieldForceSalesmanStatusSchema.optional(),
+});
+
+export const fieldForceAssignCustomerSchema = z.object({
+  tradeCustomerId: z.string().uuid(),
+  salesmanEmployeeId: z.string().uuid().nullable().optional(),
+  territoryId: z.string().uuid().nullable().optional(),
+  routeId: z.string().uuid().nullable().optional(),
+  reason: z.string().optional(),
+});
+
+export const fieldForceRouteCustomerSchema = z.object({
+  tradeCustomerId: z.string().uuid(),
+  sequenceNo: z.number().int().min(0).optional(),
+  preferredVisitDay: z.number().int().min(0).max(6).nullable().optional(),
+  visitFrequency: z.string().optional(),
+  priority: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const fieldForceReorderRouteSchema = z.object({
+  customerIds: z.array(z.string().uuid()).min(1),
+});
+
+export const createFieldForcePjpSchema = z.object({
+  branchCode: z.string().optional(),
+  name: z.string().min(1),
+  employeeId: z.string().uuid(),
+  territoryId: z.string().uuid().optional(),
+  routeId: z.string().uuid().optional(),
+  effectiveFrom: z.string().min(1),
+  effectiveTo: z.string().optional(),
+  frequency: fieldForcePjpFrequencySchema.optional(),
+  workingDays: z.string().optional(),
+  notes: z.string().optional(),
+  lines: z
+    .array(
+      z.object({
+        dayOfWeek: z.number().int().min(0).max(6).nullable().optional(),
+        tradeCustomerId: z.string().uuid(),
+        routeId: z.string().uuid().optional(),
+        sequenceNo: z.number().int().min(0).optional(),
+        visitType: z.string().optional(),
+        priority: z.string().optional(),
+        plannedDurationMin: z.number().int().positive().optional(),
+        notes: z.string().optional(),
+      }),
+    )
+    .min(1),
+});
+
+export const reviseFieldForcePjpSchema = createFieldForcePjpSchema.extend({
+  changeReason: z.string().min(1),
+});
+
+export const generateFieldForceVisitsSchema = z.object({
+  date: z.string().min(1),
+  employeeId: z.string().uuid().optional(),
+  pjpId: z.string().uuid().optional(),
+  branchCode: z.string().optional(),
+  idempotencyKey: z.string().min(1).max(128).optional(),
+});
+
+export const startFieldForceVisitSchema = z.object({
+  latitude: z.string().optional(),
+  longitude: z.string().optional(),
+  locationAccuracy: z.string().optional(),
+  idempotencyKey: z.string().min(1).max(128).optional(),
+});
+
+export const completeFieldForceVisitSchema = z.object({
+  outcome: fieldForceVisitOutcomeSchema,
+  notes: z.string().optional(),
+  contactPerson: z.string().optional(),
+  customerFeedback: z.string().optional(),
+  orderId: z.string().uuid().optional(),
+  collectionId: z.string().uuid().optional(),
+  followUpRequired: z.boolean().optional(),
+  followUpDate: z.string().optional(),
+  followUpAction: z.string().optional(),
+  nextVisitDate: z.string().optional(),
+  latitude: z.string().optional(),
+  longitude: z.string().optional(),
+  locationAccuracy: z.string().optional(),
+  idempotencyKey: z.string().min(1).max(128).optional(),
+});
+
+export const rescheduleFieldForceVisitSchema = z.object({
+  newDate: z.string().min(1),
+  reason: z.string().min(1),
+});
+
+export const missFieldForceVisitSchema = z.object({
+  reason: z.string().optional(),
+});
+
+export const closeFieldForceDaySchema = z.object({
+  date: z.string().min(1),
+  employeeId: z.string().uuid().optional(),
+  branchCode: z.string().optional(),
+});
+
+export const createFieldForceTargetSchema = z.object({
+  periodType: z.enum(["daily", "weekly", "monthly", "quarterly", "custom"]).optional(),
+  periodStart: z.string().min(1),
+  periodEnd: z.string().min(1),
+  scopeType: fieldForceTargetScopeSchema.optional(),
+  employeeId: z.string().uuid().optional(),
+  territoryId: z.string().uuid().optional(),
+  routeId: z.string().uuid().optional(),
+  branchCode: z.string().optional(),
+  targetSalesPkr: z.number().int().min(0).optional(),
+  targetCollectionPkr: z.number().int().min(0).optional(),
+  targetVisits: z.number().int().min(0).optional(),
+  changeReason: z.string().optional(),
+});
+
+export type UpsertFieldForceSalesman = z.infer<typeof upsertFieldForceSalesmanSchema>;
+export type FieldForceRouteCustomer = z.infer<typeof fieldForceRouteCustomerSchema>;
+export type CreateFieldForcePjp = z.infer<typeof createFieldForcePjpSchema>;
+export type GenerateFieldForceVisits = z.infer<typeof generateFieldForceVisitsSchema>;
+export type CompleteFieldForceVisit = z.infer<typeof completeFieldForceVisitSchema>;
+export type CreateFieldForceTarget = z.infer<typeof createFieldForceTargetSchema>;

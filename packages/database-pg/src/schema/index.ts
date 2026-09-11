@@ -23,6 +23,7 @@ export * from "./security";
 export * from "./refresh-tokens";
 export * from "./tax-authority";
 export * from "./printing";
+export * from "./sync-platform";
 export * from "./users";
 export * from "./user-invites";
 export * from "./entity-deletion-backups";

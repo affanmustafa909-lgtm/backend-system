@@ -1,8 +1,9 @@
-import { Inject, Injectable, Logger } from "@nestjs/common";
-import { and, eq } from "drizzle-orm";
+import { BadRequestException, Inject, Injectable, Logger } from "@nestjs/common";
+import { and, eq, lte, gte } from "drizzle-orm";
 import {
   popsAccounts,
   popsBills,
+  popsFinancialPeriods,
   popsGoodsReceipts,
   popsJournalEntries,
   popsJournalLines,
@@ -480,17 +481,338 @@ export class AccountingHooksService {
     });
   }
 
+  async recordDistWholesaleInvoice(
+    organizationId: string,
+    branchId: string,
+    invoice: {
+      invoiceNumber: string;
+      subtotalPkr: number;
+      discountPkr: number;
+      taxPkr: number;
+      totalPkr: number;
+      amountPaidPkr: number;
+      amountDuePkr: number;
+      paymentMethod?: string;
+      createdAt: Date | string;
+    },
+  ): Promise<void> {
+    if (await this.hasSource(organizationId, "dist_invoice", invoice.invoiceNumber)) return;
+
+    const lines: JournalLineInput[] = [];
+    const paid = Math.max(0, Math.round(invoice.amountPaidPkr));
+    const due = Math.max(0, Math.round(invoice.amountDuePkr));
+    if (paid > 0) {
+      lines.push({
+        accountCode: this.cashOrBankCode(invoice.paymentMethod ?? "cash"),
+        debit: paid,
+        credit: 0,
+        memo: "Wholesale cash/bank receipt",
+      });
+    }
+    if (due > 0) {
+      lines.push({ accountCode: "1301", debit: due, credit: 0, memo: "Accounts receivable" });
+    }
+    const netSales = Math.max(0, Math.round(invoice.subtotalPkr));
+    if (netSales > 0) {
+      lines.push({ accountCode: "4111", debit: 0, credit: netSales, memo: "Wholesale sales" });
+    }
+    if (invoice.discountPkr > 0) {
+      lines.push({ accountCode: "4105", debit: Math.round(invoice.discountPkr), credit: 0, memo: "Sales discount" });
+    }
+    if (invoice.taxPkr > 0) {
+      lines.push({ accountCode: "2201", debit: 0, credit: Math.round(invoice.taxPkr), memo: "Output tax" });
+    }
+
+    const entryDate =
+      typeof invoice.createdAt === "string"
+        ? invoice.createdAt.slice(0, 10)
+        : invoice.createdAt.toISOString().slice(0, 10);
+
+    await this.postEntry(organizationId, branchId, {
+      entryRef: `JV-WINV-${invoice.invoiceNumber}`,
+      entryDate,
+      source: "dist_invoice",
+      sourceRef: invoice.invoiceNumber,
+      description: `Wholesale invoice ${invoice.invoiceNumber}`,
+      createdBy: "distribution",
+      lines,
+    });
+  }
+
+  async recordDistCollection(
+    organizationId: string,
+    branchId: string,
+    collection: {
+      collectionNumber: string;
+      amountPkr: number;
+      unallocatedPkr: number;
+      paymentMethod?: string;
+      chequeStatus?: string | null;
+      createdAt?: Date | string;
+    },
+  ): Promise<void> {
+    const allocated = Math.max(0, Math.round(collection.amountPkr) - Math.round(collection.unallocatedPkr ?? 0));
+    const advance = Math.max(0, Math.round(collection.unallocatedPkr ?? 0));
+    if (allocated + advance <= 0) return;
+    if (await this.hasSource(organizationId, "dist_collection", collection.collectionNumber)) return;
+
+    const method = collection.paymentMethod ?? "cash";
+    const isCheque = /cheque|check/i.test(method);
+    const pendingCheque = isCheque && (collection.chequeStatus ?? "pending") !== "cleared";
+    const debitCode = pendingCheque ? "1302" : this.cashOrBankCode(method);
+
+    const lines: JournalLineInput[] = [
+      { accountCode: debitCode, debit: allocated + advance, credit: 0, memo: "Collection receipt" },
+    ];
+    if (allocated > 0) {
+      lines.push({ accountCode: "1301", debit: 0, credit: allocated, memo: "AR reduction" });
+    }
+    if (advance > 0) {
+      lines.push({ accountCode: "2302", debit: 0, credit: advance, memo: "Customer advance" });
+    }
+
+    const entryDate =
+      typeof collection.createdAt === "string"
+        ? collection.createdAt.slice(0, 10)
+        : (collection.createdAt ?? new Date()).toISOString().slice(0, 10);
+
+    await this.postEntry(organizationId, branchId, {
+      entryRef: `JV-COL-${collection.collectionNumber}`,
+      entryDate,
+      source: "dist_collection",
+      sourceRef: collection.collectionNumber,
+      description: `Collection ${collection.collectionNumber}`,
+      createdBy: "distribution",
+      lines,
+    });
+  }
+
+  async recordDistCollectionAllocate(
+    organizationId: string,
+    branchId: string,
+    collectionNumber: string,
+    amountPkr: number,
+    allocateKey: string,
+  ): Promise<void> {
+    const amount = Math.round(amountPkr);
+    if (amount <= 0) return;
+    const sourceRef = `${collectionNumber}:${allocateKey}`;
+    if (await this.hasSource(organizationId, "dist_collection_allocate", sourceRef)) return;
+
+    await this.postEntry(organizationId, branchId, {
+      entryRef: `JV-COL-ALC-${allocateKey.slice(-8)}`,
+      entryDate: new Date().toISOString().slice(0, 10),
+      source: "dist_collection_allocate",
+      sourceRef,
+      description: `Allocate advance ${collectionNumber}`,
+      createdBy: "distribution",
+      lines: [
+        { accountCode: "2302", debit: amount, credit: 0, memo: "Advance applied" },
+        { accountCode: "1301", debit: 0, credit: amount, memo: "AR reduction" },
+      ],
+    });
+  }
+
+  async recordDistChequeCleared(
+    organizationId: string,
+    branchId: string,
+    collectionNumber: string,
+    amountPkr: number,
+  ): Promise<void> {
+    const amount = Math.round(amountPkr);
+    if (amount <= 0) return;
+    const sourceRef = `${collectionNumber}:cleared`;
+    if (await this.hasSource(organizationId, "dist_cheque_clear", sourceRef)) return;
+
+    await this.postEntry(organizationId, branchId, {
+      entryRef: `JV-CHQ-${collectionNumber}`,
+      entryDate: new Date().toISOString().slice(0, 10),
+      source: "dist_cheque_clear",
+      sourceRef,
+      description: `Cheque cleared ${collectionNumber}`,
+      createdBy: "distribution",
+      lines: [
+        { accountCode: "1102", debit: amount, credit: 0, memo: "Bank deposit" },
+        { accountCode: "1302", debit: 0, credit: amount, memo: "Cheques receivable" },
+      ],
+    });
+  }
+
+  async recordDistWholesaleReturn(
+    organizationId: string,
+    branchId: string,
+    ret: { returnNumber: string; totalPkr: number; createdAt?: Date | string },
+  ): Promise<void> {
+    const total = Math.round(ret.totalPkr);
+    if (total <= 0) return;
+    if (await this.hasSource(organizationId, "dist_wholesale_return", ret.returnNumber)) return;
+
+    const entryDate =
+      typeof ret.createdAt === "string"
+        ? ret.createdAt.slice(0, 10)
+        : (ret.createdAt ?? new Date()).toISOString().slice(0, 10);
+
+    await this.postEntry(organizationId, branchId, {
+      entryRef: `JV-WRN-${ret.returnNumber}`,
+      entryDate,
+      source: "dist_wholesale_return",
+      sourceRef: ret.returnNumber,
+      description: `Wholesale return ${ret.returnNumber}`,
+      createdBy: "distribution",
+      lines: [
+        { accountCode: "4111", debit: total, credit: 0, memo: "Wholesale sales return" },
+        { accountCode: "1301", debit: 0, credit: total, memo: "AR reduction" },
+      ],
+    });
+  }
+
+  async recordPharmacyPurchaseReturn(
+    organizationId: string,
+    branchId: string,
+    ret: { returnNumber: string; totalPkr: number; createdAt?: Date | string },
+  ): Promise<void> {
+    const total = Math.round(ret.totalPkr);
+    if (total <= 0) return;
+    if (await this.hasSource(organizationId, "pharmacy_purchase_return", ret.returnNumber)) return;
+
+    const entryDate =
+      typeof ret.createdAt === "string"
+        ? ret.createdAt.slice(0, 10)
+        : (ret.createdAt ?? new Date()).toISOString().slice(0, 10);
+
+    await this.postEntry(organizationId, branchId, {
+      entryRef: `JV-PRN-${ret.returnNumber}`,
+      entryDate,
+      source: "pharmacy_purchase_return",
+      sourceRef: ret.returnNumber,
+      description: `Purchase return ${ret.returnNumber}`,
+      createdBy: "pharmacy",
+      lines: [
+        { accountCode: "2101", debit: total, credit: 0, memo: "AP reduction" },
+        { accountCode: "1201", debit: 0, credit: total, memo: "Inventory returned" },
+      ],
+    });
+  }
+
+  async reverseJournal(
+    organizationId: string,
+    entryId: string,
+    actor: string,
+    reason: string,
+  ) {
+    const [original] = await this.db
+      .select()
+      .from(popsJournalEntries)
+      .where(
+        and(eq(popsJournalEntries.id, entryId), eq(popsJournalEntries.organizationId, organizationId)),
+      )
+      .limit(1);
+    if (!original) throw new BadRequestException("Journal not found");
+    if (original.status !== "posted") {
+      throw new BadRequestException("Only posted journals can be reversed");
+    }
+
+    const [already] = await this.db
+      .select({ id: popsJournalEntries.id })
+      .from(popsJournalEntries)
+      .where(
+        and(
+          eq(popsJournalEntries.organizationId, organizationId),
+          eq(popsJournalEntries.source, "reversal"),
+          eq(popsJournalEntries.sourceRef, original.entryRef),
+        ),
+      )
+      .limit(1);
+    if (already) throw new BadRequestException("Journal already reversed");
+
+    const lines = await this.db
+      .select()
+      .from(popsJournalLines)
+      .where(eq(popsJournalLines.entryId, original.id));
+    if (lines.length < 2) throw new BadRequestException("Journal has no lines to reverse");
+
+    await this.assertPeriodOpen(organizationId, original.branchId, new Date().toISOString().slice(0, 10));
+
+    const [reversal] = await this.db
+      .insert(popsJournalEntries)
+      .values({
+        organizationId,
+        branchId: original.branchId,
+        entryRef: `JV-REV-${original.entryRef}`.slice(0, 60),
+        entryDate: new Date().toISOString().slice(0, 10),
+        source: "reversal",
+        sourceRef: original.entryRef,
+        description: `Reversal of ${original.entryRef}: ${reason.trim() || "correction"}`,
+        status: "posted",
+        reversedFromEntryId: original.id,
+        reverseReason: reason.trim() || "correction",
+        reversedBy: actor,
+        reversedAt: new Date(),
+        createdBy: actor,
+      })
+      .returning();
+    if (!reversal) throw new BadRequestException("Failed to create reversal");
+
+    for (const line of lines) {
+      await this.db.insert(popsJournalLines).values({
+        entryId: reversal.id,
+        accountId: line.accountId,
+        debitPkr: line.creditPkr,
+        creditPkr: line.debitPkr,
+        memo: `Reversal of ${original.entryRef}`,
+      });
+    }
+
+    return reversal;
+  }
+
+  async findBySource(organizationId: string, source: string, sourceRef: string) {
+    const [row] = await this.db
+      .select()
+      .from(popsJournalEntries)
+      .where(
+        and(
+          eq(popsJournalEntries.organizationId, organizationId),
+          eq(popsJournalEntries.source, source),
+          eq(popsJournalEntries.sourceRef, sourceRef),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  }
+
+  async assertPeriodOpen(organizationId: string, branchId: string, entryDate: string): Promise<void> {
+    const closed = await this.db
+      .select({ id: popsFinancialPeriods.id, name: popsFinancialPeriods.name })
+      .from(popsFinancialPeriods)
+      .where(
+        and(
+          eq(popsFinancialPeriods.organizationId, organizationId),
+          eq(popsFinancialPeriods.branchId, branchId),
+          eq(popsFinancialPeriods.status, "closed"),
+          lte(popsFinancialPeriods.startDate, entryDate),
+          gte(popsFinancialPeriods.endDate, entryDate),
+        ),
+      )
+      .limit(1);
+    if (closed[0]) {
+      throw new BadRequestException(
+        `Period ${closed[0].name} is closed. Reopen it (audited) before posting.`,
+      );
+    }
+  }
+
   async ensureBranchChart(organizationId: string, branchId: string): Promise<void> {
     const existing = await this.db
-      .select({ id: popsAccounts.id })
+      .select({ code: popsAccounts.code })
       .from(popsAccounts)
       .where(
         and(eq(popsAccounts.organizationId, organizationId), eq(popsAccounts.branchId, branchId)),
-      )
-      .limit(1);
-    if (existing.length > 0) return;
-
+      );
+    const have = new Set(existing.map((a) => a.code));
+    let inserted = 0;
     for (const acct of DEFAULT_CHART) {
+      if (have.has(acct.code)) continue;
       await this.db.insert(popsAccounts).values({
         organizationId,
         branchId,
@@ -499,8 +821,11 @@ export class AccountingHooksService {
         type: acct.type,
         subtype: acct.subtype,
       });
+      inserted += 1;
     }
-    this.logger.log(`Seeded chart of accounts for branch ${branchId}`);
+    if (inserted > 0) {
+      this.logger.log(`Seeded ${inserted} chart accounts for branch ${branchId}`);
+    }
   }
 
   async postEntry(
@@ -517,6 +842,11 @@ export class AccountingHooksService {
     },
   ) {
     await this.ensureBranchChart(organizationId, branchId);
+    await this.assertPeriodOpen(organizationId, branchId, input.entryDate);
+
+    if (input.sourceRef && (await this.hasSource(organizationId, input.source, input.sourceRef))) {
+      return this.findBySource(organizationId, input.source, input.sourceRef);
+    }
 
     const accounts = await this.db
       .select()
@@ -526,53 +856,82 @@ export class AccountingHooksService {
       );
 
     const byCode = new Map(accounts.map((a) => [a.code, a]));
-    const resolved = input.lines
-      .map((l) => {
-        const acct = byCode.get(l.accountCode);
-        if (!acct) return null;
-        return { accountId: acct.id, debit: l.debit, credit: l.credit, memo: l.memo };
-      })
-      .filter((l): l is NonNullable<typeof l> => l !== null && (l.debit > 0 || l.credit > 0));
+    const resolved: { accountId: string; debit: number; credit: number; memo?: string }[] = [];
+    for (const l of input.lines) {
+      const debit = Math.round(l.debit);
+      const credit = Math.round(l.credit);
+      if (debit <= 0 && credit <= 0) continue;
+      if (debit > 0 && credit > 0) {
+        throw new BadRequestException(`Line ${l.accountCode} cannot have both debit and credit`);
+      }
+      const acct = byCode.get(l.accountCode);
+      if (!acct) {
+        throw new BadRequestException(`Account ${l.accountCode} is not on the chart`);
+      }
+      if (!acct.active) {
+        throw new BadRequestException(`Account ${l.accountCode} is inactive`);
+      }
+      resolved.push({ accountId: acct.id, debit, credit, memo: l.memo });
+    }
 
     if (resolved.length < 2) {
-      this.logger.warn(`Skipping journal ${input.entryRef}: accounts not seeded`);
-      return null;
+      throw new BadRequestException(`Journal ${input.entryRef} needs at least two lines`);
     }
 
     const totalDebit = resolved.reduce((s, l) => s + l.debit, 0);
     const totalCredit = resolved.reduce((s, l) => s + l.credit, 0);
-    if (totalDebit !== totalCredit) {
-      this.logger.warn(`Unbalanced entry ${input.entryRef}: ${totalDebit} vs ${totalCredit}`);
-      return null;
+    if (totalDebit !== totalCredit || totalDebit === 0) {
+      throw new BadRequestException(
+        `Unbalanced journal ${input.entryRef}: debit ${totalDebit} vs credit ${totalCredit}`,
+      );
     }
 
-    const [entry] = await this.db
-      .insert(popsJournalEntries)
-      .values({
-        organizationId,
-        branchId,
-        entryRef: input.entryRef,
-        entryDate: input.entryDate,
-        source: input.source,
-        sourceRef: input.sourceRef,
-        description: input.description,
-        status: "posted",
-        createdBy: input.createdBy,
-      })
-      .returning();
+    try {
+      const [entry] = await this.db
+        .insert(popsJournalEntries)
+        .values({
+          organizationId,
+          branchId,
+          entryRef: input.entryRef,
+          entryDate: input.entryDate,
+          source: input.source,
+          sourceRef: input.sourceRef,
+          description: input.description,
+          status: "posted",
+          createdBy: input.createdBy,
+        })
+        .returning();
 
-    if (!entry) return null;
+      if (!entry) return null;
 
-    for (const line of resolved) {
-      await this.db.insert(popsJournalLines).values({
-        entryId: entry.id,
-        accountId: line.accountId,
-        debitPkr: line.debit,
-        creditPkr: line.credit,
-        memo: line.memo ?? null,
-      });
+      for (const line of resolved) {
+        await this.db.insert(popsJournalLines).values({
+          entryId: entry.id,
+          accountId: line.accountId,
+          debitPkr: line.debit,
+          creditPkr: line.credit,
+          memo: line.memo ?? null,
+        });
+      }
+
+      return entry;
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === "23505" && input.sourceRef) {
+        return this.findBySource(organizationId, input.source, input.sourceRef);
+      }
+      throw err;
     }
+  }
 
-    return entry;
+  private cashOrBankCode(method: string): string {
+    const m = method.toLowerCase();
+    if (m.includes("card") || m.includes("bank") || m.includes("jazz") || m.includes("easy")) return "1102";
+    return "1101";
+  }
+
+  private async hasSource(organizationId: string, source: string, sourceRef: string): Promise<boolean> {
+    const row = await this.findBySource(organizationId, source, sourceRef);
+    return Boolean(row);
   }
 }

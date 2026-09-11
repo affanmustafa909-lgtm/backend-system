@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import type {
@@ -78,6 +79,8 @@ import { DeliveryService } from "./delivery/delivery.service";
 
 @Injectable()
 export class PharmacyErpService {
+  private readonly logger = new Logger(PharmacyErpService.name);
+
   constructor(
     @Inject(DRIZZLE) private readonly db: PlatformPgDb,
     private readonly stock: PharmacyStockEngine,
@@ -1434,7 +1437,7 @@ export class PharmacyErpService {
     });
 
     try {
-      await this.accountingHooks.recordSaleFromPharmacySale(organizationId, result.branchId, {
+      await this.accountingHooks.recordDistWholesaleInvoice(organizationId, result.branchId, {
         invoiceNumber: result.invoice.invoiceNumber,
         subtotalPkr: result.invoice.subtotalPkr,
         discountPkr: result.invoice.discountPkr,
@@ -1445,8 +1448,10 @@ export class PharmacyErpService {
         paymentMethod: result.invoice.paymentMethod,
         createdAt: result.invoice.createdAt,
       });
-    } catch {
-      /* ignore */
+    } catch (err) {
+      this.logger.error(
+        `WINV ${result.invoice.invoiceNumber} missing journal: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     const lines = await this.db
@@ -2060,6 +2065,18 @@ export class PharmacyErpService {
       }
       return created;
     });
+
+    try {
+      await this.accountingHooks.recordDistWholesaleReturn(organizationId, ret.branchId, {
+        returnNumber: ret.returnNumber,
+        totalPkr: ret.totalPkr,
+        createdAt: ret.createdAt,
+      });
+    } catch (err) {
+      this.logger.error(
+        `WRN ${ret.returnNumber} missing journal: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
 
     const lines = await this.db
       .select()

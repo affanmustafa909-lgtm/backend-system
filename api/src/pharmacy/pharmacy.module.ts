@@ -47,6 +47,18 @@ import { CollectionsController } from "./collections/collections.controller";
 import { CollectionService } from "./collections/collection.service";
 import { AgingService } from "./collections/aging.service";
 import { RecoveryService } from "./collections/recovery.service";
+import { FieldForceController } from "./field-force/field-force.controller";
+import { FieldForceNumberingService } from "./field-force/field-force-numbering.service";
+import { FieldForceDashboardService } from "./field-force/field-force-dashboard.service";
+import { FieldForceSalesmanService } from "./field-force/salesman.service";
+import { FieldForceRoutePlanService } from "./field-force/route-plan.service";
+import { FieldForcePjpService } from "./field-force/pjp.service";
+import { FieldForceVisitService } from "./field-force/visit.service";
+import { FieldForceTargetService } from "./field-force/target.service";
+import { DistFinanceController } from "./finance/dist-finance.controller";
+import { DistFinanceService } from "./finance/dist-finance.service";
+import { DistIoController } from "./io/dist-io.controller";
+import { DistIoService } from "./io/dist-io.service";
 
 @Module({
   imports: [TaxAuthorityModule, AccountingModule],
@@ -59,6 +71,9 @@ import { RecoveryService } from "./collections/recovery.service";
     PurchaseController,
     DeliveryController,
     CollectionsController,
+    FieldForceController,
+    DistFinanceController,
+    DistIoController,
   ],
   providers: [
     PharmacyService,
@@ -82,7 +97,16 @@ import { RecoveryService } from "./collections/recovery.service";
     CollectionService,
     AgingService,
     RecoveryService,
+    FieldForceNumberingService,
+    FieldForceSalesmanService,
+    FieldForceRoutePlanService,
+    FieldForcePjpService,
+    FieldForceVisitService,
+    FieldForceTargetService,
+    FieldForceDashboardService,
     PharmacyErpService,
+    DistFinanceService,
+    DistIoService,
     PharmacyMastersService,
     PharmacyDashboardService,
     PharmacyStockEngine,

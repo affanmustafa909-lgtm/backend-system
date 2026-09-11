@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { and, count, desc, eq, type SQL } from "drizzle-orm";
@@ -17,6 +18,7 @@ import { normalizePage, pageResult, type PageResult } from "../inventory/batch-s
 import { MOVEMENT_TYPES } from "../inventory/stock-ledger.service";
 import { PharmacyStockEngine } from "../pharmacy-stock.engine";
 import { PurchaseNumberingService } from "./purchase-numbering.service";
+import { AccountingHooksService } from "../../accounting/accounting-hooks.service";
 
 export type CreatePurchaseReturnInput = {
   branchCode: string;
@@ -36,10 +38,13 @@ export type CreatePurchaseReturnInput = {
  */
 @Injectable()
 export class PurchaseReturnService {
+  private readonly logger = new Logger(PurchaseReturnService.name);
+
   constructor(
     @Inject(DRIZZLE) private readonly db: PlatformPgDb,
     private readonly stock: PharmacyStockEngine,
     private readonly numbering: PurchaseNumberingService,
+    private readonly accountingHooks: AccountingHooksService,
   ) {}
 
   private async resolveBranch(organizationId: string, branchCode: string) {
@@ -168,8 +173,17 @@ export class PurchaseReturnService {
       }),
     );
 
-    // TODO(AP reverse): when AccountingHooks gains reversePharmacyPurchaseReturn, call it here.
-    // Today GRN AP is JV-only; inventing a reverse without a shared hook would risk ledger drift.
+    try {
+      await this.accountingHooks.recordPharmacyPurchaseReturn(organizationId, ret.branchId, {
+        returnNumber: ret.returnNumber,
+        totalPkr: ret.totalPkr,
+        createdAt: ret.createdAt,
+      });
+    } catch (err) {
+      this.logger.error(
+        `PRN ${ret.returnNumber} missing journal: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
 
     return this.getById(organizationId, ret.id);
   }

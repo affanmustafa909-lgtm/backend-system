@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  BadRequestException,
   NotFoundException,
   Param,
   Patch,
@@ -59,13 +60,121 @@ export class AccountingController {
   }
 
   @Post("journal")
-  @RequirePermissions("pops.accounting.manage")
+  @RequirePermissions("pops.accounting.manage", "finance.post")
   createJournal(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
     return this.accounting.createJournalEntry(
       user.organizationId,
       user.sub,
       createJournalEntrySchema.parse(body),
     );
+  }
+
+  @Get("ledger")
+  @RequirePermissions("pops.read", "finance.view")
+  listLedger(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode: string,
+    @Query("accountId") accountId?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("source") source?: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
+  ) {
+    return this.accounting.listGeneralLedger(user.organizationId, branchCode?.trim() ?? "", {
+      accountId: accountId?.trim() || undefined,
+      from,
+      to,
+      source: source?.trim() || undefined,
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+    });
+  }
+
+  @Post("journal/:entryId/reverse")
+  @RequirePermissions("pops.accounting.manage", "finance.reverse")
+  reverseJournal(
+    @CurrentUser() user: AccessJwtPayload,
+    @Param("entryId") entryId: string,
+    @Body() body: unknown,
+  ) {
+    const reason =
+      typeof (body as { reason?: string } | null)?.reason === "string"
+        ? (body as { reason: string }).reason
+        : "";
+    return this.accounting.reverseJournal(user.organizationId, user.sub, entryId, reason);
+  }
+
+  @Get("periods")
+  @RequirePermissions("pops.read", "finance.view")
+  listPeriods(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
+    return this.accounting.listPeriods(user.organizationId, branchCode?.trim() ?? "");
+  }
+
+  @Post("periods")
+  @RequirePermissions("pops.accounting.manage", "finance.close_period")
+  createPeriod(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
+    const input = body as { branchCode?: string; name?: string; startDate?: string; endDate?: string };
+    if (!input.branchCode || !input.name || !input.startDate || !input.endDate) {
+      throw new BadRequestException("branchCode, name, startDate, and endDate are required");
+    }
+    return this.accounting.createPeriod(user.organizationId, user.sub, {
+      branchCode: input.branchCode,
+      name: input.name,
+      startDate: input.startDate,
+      endDate: input.endDate,
+    });
+  }
+
+  @Patch("periods/:periodId/close")
+  @RequirePermissions("pops.accounting.manage", "finance.close_period")
+  closePeriod(@CurrentUser() user: AccessJwtPayload, @Param("periodId") periodId: string) {
+    return this.accounting.closePeriod(user.organizationId, user.sub, periodId);
+  }
+
+  @Patch("periods/:periodId/reopen")
+  @RequirePermissions("pops.accounting.manage", "finance.reopen_period")
+  reopenPeriod(
+    @CurrentUser() user: AccessJwtPayload,
+    @Param("periodId") periodId: string,
+    @Body() body: unknown,
+  ) {
+    const reason =
+      typeof (body as { reason?: string } | null)?.reason === "string"
+        ? (body as { reason: string }).reason
+        : "";
+    return this.accounting.reopenPeriod(user.organizationId, user.sub, periodId, reason);
+  }
+
+  @Get("bank-reconciliation")
+  @RequirePermissions("pops.read", "finance.view", "finance.reconcile")
+  bankReconciliation(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode: string,
+    @Query("bankAccountId") bankAccountId: string,
+    @Query("statementBalance") statementBalance?: string,
+  ) {
+    return this.accounting.getBankReconciliation(
+      user.organizationId,
+      branchCode?.trim() ?? "",
+      bankAccountId,
+      statementBalance ? Number(statementBalance) : undefined,
+    );
+  }
+
+  @Patch("bank-transactions/:txnId/match")
+  @RequirePermissions("pops.accounting.manage", "finance.reconcile")
+  matchBankTxn(
+    @CurrentUser() user: AccessJwtPayload,
+    @Param("txnId") txnId: string,
+    @Body() body: unknown,
+  ) {
+    const matched = (body as { matched?: boolean })?.matched !== false;
+    const statementRef =
+      typeof (body as { statementRef?: string })?.statementRef === "string"
+        ? (body as { statementRef: string }).statementRef
+        : undefined;
+    return this.accounting.matchBankTransaction(user.organizationId, user.sub, txnId, matched, statementRef);
   }
 
   @Get("sales")

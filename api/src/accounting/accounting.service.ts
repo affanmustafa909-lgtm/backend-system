@@ -44,6 +44,7 @@ import {
   popsVendorPayments,
   popsWasteRecords,
   popsBranches,
+  popsFinancialPeriods,
   type PlatformPgDb,
 } from "@platform/database-pg";
 import { DRIZZLE } from "../drizzle/drizzle.tokens";
@@ -333,7 +334,7 @@ export class AccountingService implements OnApplicationBootstrap {
   async listJournal(
     organizationId: string,
     branchCode: string,
-    opts?: { from?: string; to?: string; limit?: number },
+    opts?: { from?: string; to?: string; limit?: number; source?: string },
   ) {
     const branch = await this.resolveBranch(organizationId, branchCode);
     const conditions = [
@@ -343,6 +344,7 @@ export class AccountingService implements OnApplicationBootstrap {
     ];
     if (opts?.from) conditions.push(gte(popsJournalEntries.entryDate, opts.from));
     if (opts?.to) conditions.push(lte(popsJournalEntries.entryDate, opts.to));
+    if (opts?.source) conditions.push(eq(popsJournalEntries.source, opts.source));
 
     const entries = await this.db
       .select()
@@ -354,16 +356,214 @@ export class AccountingService implements OnApplicationBootstrap {
     return Promise.all(entries.map((e) => this.mapJournalEntry(e)));
   }
 
+  async listGeneralLedger(
+    organizationId: string,
+    branchCode: string,
+    opts: {
+      accountId?: string;
+      from?: string;
+      to?: string;
+      source?: string;
+      page?: number;
+      pageSize?: number;
+    } = {},
+  ) {
+    const branch = await this.resolveBranch(organizationId, branchCode);
+    const page = Math.max(1, opts.page ?? 1);
+    const pageSize = Math.min(200, Math.max(1, opts.pageSize ?? 50));
+    const offset = (page - 1) * pageSize;
+
+    if (!opts.accountId) {
+      const conditions = [
+        eq(popsJournalEntries.organizationId, organizationId),
+        eq(popsJournalEntries.branchId, branch.id),
+        eq(popsJournalEntries.status, "posted"),
+      ];
+      if (opts.from) conditions.push(gte(popsJournalEntries.entryDate, opts.from));
+      if (opts.to) conditions.push(lte(popsJournalEntries.entryDate, opts.to));
+      if (opts.source) conditions.push(eq(popsJournalEntries.source, opts.source));
+
+      const [countRow] = await this.db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(popsJournalEntries)
+        .where(and(...conditions));
+      const entries = await this.db
+        .select()
+        .from(popsJournalEntries)
+        .where(and(...conditions))
+        .orderBy(desc(popsJournalEntries.entryDate), desc(popsJournalEntries.createdAt))
+        .limit(pageSize)
+        .offset(offset);
+      return {
+        items: await Promise.all(entries.map((e) => this.mapJournalEntry(e))),
+        page,
+        pageSize,
+        total: countRow?.n ?? 0,
+        openingBalance: 0,
+      };
+    }
+
+    const [account] = await this.db
+      .select()
+      .from(popsAccounts)
+      .where(
+        and(
+          eq(popsAccounts.id, opts.accountId),
+          eq(popsAccounts.organizationId, organizationId),
+          eq(popsAccounts.branchId, branch.id),
+        ),
+      )
+      .limit(1);
+    if (!account) throw new NotFoundException("Account not found");
+
+    const lineConds = [
+      eq(popsJournalLines.accountId, account.id),
+      eq(popsJournalEntries.status, "posted"),
+      eq(popsJournalEntries.organizationId, organizationId),
+      eq(popsJournalEntries.branchId, branch.id),
+    ];
+    if (opts.from) lineConds.push(gte(popsJournalEntries.entryDate, opts.from));
+    if (opts.to) lineConds.push(lte(popsJournalEntries.entryDate, opts.to));
+    if (opts.source) lineConds.push(eq(popsJournalEntries.source, opts.source));
+
+    const openingConds = [
+      eq(popsJournalLines.accountId, account.id),
+      eq(popsJournalEntries.status, "posted"),
+      eq(popsJournalEntries.organizationId, organizationId),
+      eq(popsJournalEntries.branchId, branch.id),
+    ];
+    if (opts.from) openingConds.push(sql`${popsJournalEntries.entryDate} < ${opts.from}`);
+
+    const [openingRow] = await this.db
+      .select({
+        debit: sql<number>`coalesce(sum(${popsJournalLines.debitPkr}), 0)`.mapWith(Number),
+        credit: sql<number>`coalesce(sum(${popsJournalLines.creditPkr}), 0)`.mapWith(Number),
+      })
+      .from(popsJournalLines)
+      .innerJoin(popsJournalEntries, eq(popsJournalEntries.id, popsJournalLines.entryId))
+      .where(and(...openingConds));
+
+    const rawOpening = (openingRow?.debit ?? 0) - (openingRow?.credit ?? 0);
+    const openingBalance =
+      account.type === "asset" || account.type === "expense" ? rawOpening : -rawOpening;
+
+    const [countRow] = await this.db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(popsJournalLines)
+      .innerJoin(popsJournalEntries, eq(popsJournalEntries.id, popsJournalLines.entryId))
+      .where(and(...lineConds));
+
+    const rows = await this.db
+      .select({
+        line: popsJournalLines,
+        entry: popsJournalEntries,
+      })
+      .from(popsJournalLines)
+      .innerJoin(popsJournalEntries, eq(popsJournalEntries.id, popsJournalLines.entryId))
+      .where(and(...lineConds))
+      .orderBy(popsJournalEntries.entryDate, popsJournalEntries.createdAt, popsJournalLines.id)
+      .limit(pageSize)
+      .offset(offset);
+
+    const priorConds = [...lineConds];
+    const [priorRow] = await this.db
+      .select({
+        debit: sql<number>`coalesce(sum(${popsJournalLines.debitPkr}), 0)`.mapWith(Number),
+        credit: sql<number>`coalesce(sum(${popsJournalLines.creditPkr}), 0)`.mapWith(Number),
+      })
+      .from(popsJournalLines)
+      .innerJoin(popsJournalEntries, eq(popsJournalEntries.id, popsJournalLines.entryId))
+      .where(
+        and(
+          ...priorConds,
+          sql`(
+            ${popsJournalEntries.entryDate},
+            ${popsJournalEntries.createdAt},
+            ${popsJournalLines.id}
+          ) < (
+            SELECT je.entry_date, je.created_at, jl.id
+            FROM pops_journal_lines jl
+            JOIN pops_journal_entries je ON je.id = jl.entry_id
+            WHERE jl.account_id = ${account.id}
+            ORDER BY je.entry_date, je.created_at, jl.id
+            LIMIT 1 OFFSET ${offset}
+          )`,
+        ),
+      );
+
+    // Running balance for this page starts from opening + lines before this page in-range.
+    let runningRaw = rawOpening;
+    if (offset > 0 && priorRow) {
+      runningRaw += (priorRow.debit ?? 0) - (priorRow.credit ?? 0);
+    }
+
+    const items = rows.map((r) => {
+      runningRaw += r.line.debitPkr - r.line.creditPkr;
+      const running =
+        account.type === "asset" || account.type === "expense" ? runningRaw : -runningRaw;
+      return {
+        date: r.entry.entryDate,
+        journalId: r.entry.id,
+        entryRef: r.entry.entryRef,
+        accountId: account.id,
+        accountCode: account.code,
+        accountName: account.name,
+        source: r.entry.source,
+        sourceRef: r.entry.sourceRef,
+        description: r.entry.description,
+        memo: r.line.memo,
+        debit: r.line.debitPkr,
+        credit: r.line.creditPkr,
+        runningBalance: running,
+      };
+    });
+
+    return {
+      items,
+      page,
+      pageSize,
+      total: countRow?.n ?? 0,
+      openingBalance,
+      account: { id: account.id, code: account.code, name: account.name, type: account.type },
+    };
+  }
+
   async createJournalEntry(
     organizationId: string,
     userEmail: string,
     input: CreateJournalEntry,
   ) {
     const branch = await this.resolveBranch(organizationId, input.branchCode);
-    const totalDebit = input.lines.reduce((s: number, l) => s + l.debit, 0);
-    const totalCredit = input.lines.reduce((s: number, l) => s + l.credit, 0);
+    if (input.lines.length < 2) {
+      throw new BadRequestException("Journal entry needs at least two lines");
+    }
+    for (const line of input.lines) {
+      if (line.debit > 0 && line.credit > 0) {
+        throw new BadRequestException("A line cannot have both debit and credit");
+      }
+      if (line.debit <= 0 && line.credit <= 0) {
+        throw new BadRequestException("Each line needs a debit or a credit");
+      }
+    }
+    const totalDebit = input.lines.reduce((s: number, l) => s + Math.round(l.debit), 0);
+    const totalCredit = input.lines.reduce((s: number, l) => s + Math.round(l.credit), 0);
     if (totalDebit !== totalCredit || totalDebit === 0) {
       throw new BadRequestException("Journal entry must balance with non-zero amounts");
+    }
+
+    await this.hooks.assertPeriodOpen(organizationId, branch.id, input.entryDate);
+
+    const accountIds = [...new Set(input.lines.map((l) => l.accountId))];
+    const accounts = await this.db
+      .select()
+      .from(popsAccounts)
+      .where(inArray(popsAccounts.id, accountIds));
+    if (accounts.length !== accountIds.length) {
+      throw new BadRequestException("One or more accounts were not found");
+    }
+    const inactive = accounts.find((a) => !a.active);
+    if (inactive) {
+      throw new BadRequestException(`Account ${inactive.code} is inactive`);
     }
 
     const entryRef = `JV-MAN-${Date.now().toString(36).toUpperCase().slice(-6)}`;
@@ -375,6 +575,7 @@ export class AccountingService implements OnApplicationBootstrap {
         entryRef,
         entryDate: input.entryDate,
         source: "manual",
+        sourceRef: entryRef,
         description: input.description,
         status: "posted",
         createdBy: userEmail,
@@ -386,8 +587,8 @@ export class AccountingService implements OnApplicationBootstrap {
       await this.db.insert(popsJournalLines).values({
         entryId: entry.id,
         accountId: line.accountId,
-        debitPkr: line.debit,
-        creditPkr: line.credit,
+        debitPkr: Math.round(line.debit),
+        creditPkr: Math.round(line.credit),
         memo: line.memo?.trim() || null,
       });
     }
@@ -398,6 +599,225 @@ export class AccountingService implements OnApplicationBootstrap {
     });
 
     return this.mapJournalEntry(entry);
+  }
+
+  async reverseJournal(organizationId: string, userEmail: string, entryId: string, reason: string) {
+    const [original] = await this.db
+      .select()
+      .from(popsJournalEntries)
+      .where(
+        and(eq(popsJournalEntries.id, entryId), eq(popsJournalEntries.organizationId, organizationId)),
+      )
+      .limit(1);
+    if (!original) throw new NotFoundException("Journal not found");
+
+    const reversal = await this.hooks.reverseJournal(organizationId, entryId, userEmail, reason);
+    await this.audit(organizationId, original.branchId, "journal", original.id, "reverse", userEmail, {
+      entryRef: original.entryRef,
+    }, {
+      reversalId: reversal.id,
+      reason,
+    });
+    return this.mapJournalEntry(reversal);
+  }
+
+  async listPeriods(organizationId: string, branchCode: string) {
+    const branch = await this.resolveBranch(organizationId, branchCode);
+    const rows = await this.db
+      .select()
+      .from(popsFinancialPeriods)
+      .where(
+        and(
+          eq(popsFinancialPeriods.organizationId, organizationId),
+          eq(popsFinancialPeriods.branchId, branch.id),
+        ),
+      )
+      .orderBy(desc(popsFinancialPeriods.startDate));
+    return rows;
+  }
+
+  async createPeriod(
+    organizationId: string,
+    userEmail: string,
+    input: { branchCode: string; name: string; startDate: string; endDate: string },
+  ) {
+    const branch = await this.resolveBranch(organizationId, input.branchCode);
+    if (input.endDate < input.startDate) {
+      throw new BadRequestException("endDate must be on or after startDate");
+    }
+    const [row] = await this.db
+      .insert(popsFinancialPeriods)
+      .values({
+        organizationId,
+        branchId: branch.id,
+        name: input.name.trim(),
+        startDate: input.startDate,
+        endDate: input.endDate,
+        status: "open",
+      })
+      .returning();
+    if (!row) throw new BadRequestException("Failed to create period");
+    await this.audit(organizationId, branch.id, "period", row.id, "create", userEmail, null, {
+      name: row.name,
+      startDate: row.startDate,
+      endDate: row.endDate,
+    });
+    return row;
+  }
+
+  async closePeriod(organizationId: string, userEmail: string, periodId: string) {
+    const [period] = await this.db
+      .select()
+      .from(popsFinancialPeriods)
+      .where(
+        and(
+          eq(popsFinancialPeriods.id, periodId),
+          eq(popsFinancialPeriods.organizationId, organizationId),
+        ),
+      )
+      .limit(1);
+    if (!period) throw new NotFoundException("Period not found");
+    if (period.status === "closed") throw new BadRequestException("Period is already closed");
+
+    const [drafts] = await this.db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(popsJournalEntries)
+      .where(
+        and(
+          eq(popsJournalEntries.organizationId, organizationId),
+          eq(popsJournalEntries.branchId, period.branchId),
+          eq(popsJournalEntries.status, "draft"),
+          gte(popsJournalEntries.entryDate, period.startDate),
+          lte(popsJournalEntries.entryDate, period.endDate),
+        ),
+      );
+    if ((drafts?.n ?? 0) > 0) {
+      throw new BadRequestException(`${drafts!.n} draft journal(s) remain in this period`);
+    }
+
+    const [updated] = await this.db
+      .update(popsFinancialPeriods)
+      .set({ status: "closed", closedBy: userEmail, closedAt: new Date() })
+      .where(eq(popsFinancialPeriods.id, periodId))
+      .returning();
+    await this.audit(organizationId, period.branchId, "period", period.id, "close", userEmail, {
+      status: "open",
+    }, { status: "closed" });
+    return updated;
+  }
+
+  async reopenPeriod(organizationId: string, userEmail: string, periodId: string, reason: string) {
+    if (!reason.trim()) throw new BadRequestException("Reopen reason is required");
+    const [period] = await this.db
+      .select()
+      .from(popsFinancialPeriods)
+      .where(
+        and(
+          eq(popsFinancialPeriods.id, periodId),
+          eq(popsFinancialPeriods.organizationId, organizationId),
+        ),
+      )
+      .limit(1);
+    if (!period) throw new NotFoundException("Period not found");
+    if (period.status !== "closed") throw new BadRequestException("Period is not closed");
+
+    const [updated] = await this.db
+      .update(popsFinancialPeriods)
+      .set({
+        status: "open",
+        reopenedBy: userEmail,
+        reopenedAt: new Date(),
+        reopenReason: reason.trim(),
+      })
+      .where(eq(popsFinancialPeriods.id, periodId))
+      .returning();
+    await this.audit(organizationId, period.branchId, "period", period.id, "reopen", userEmail, {
+      status: "closed",
+    }, { status: "open", reason });
+    return updated;
+  }
+
+  async getBankReconciliation(
+    organizationId: string,
+    branchCode: string,
+    bankAccountId: string,
+    statementBalancePkr?: number,
+  ) {
+    const branch = await this.resolveBranch(organizationId, branchCode);
+    const [acct] = await this.db
+      .select()
+      .from(popsBankAccounts)
+      .where(
+        and(
+          eq(popsBankAccounts.id, bankAccountId),
+          eq(popsBankAccounts.organizationId, organizationId),
+          eq(popsBankAccounts.branchId, branch.id),
+        ),
+      )
+      .limit(1);
+    if (!acct) throw new NotFoundException("Bank account not found");
+
+    const txns = await this.db
+      .select()
+      .from(popsBankTransactions)
+      .where(
+        and(
+          eq(popsBankTransactions.organizationId, organizationId),
+          eq(popsBankTransactions.bankAccountId, bankAccountId),
+        ),
+      )
+      .orderBy(desc(popsBankTransactions.txnDate));
+
+    const unmatched = txns.filter((t) => (t.matchedStatus ?? "unmatched") !== "matched");
+    const bookBalance = acct.balancePkr;
+    const statement = statementBalancePkr ?? bookBalance;
+    return {
+      bankAccountId: acct.id,
+      bankName: acct.bankName,
+      accountTitle: acct.name,
+      bookBalance,
+      statementBalance: statement,
+      difference: bookBalance - statement,
+      unmatchedCount: unmatched.length,
+      unmatched,
+      transactions: txns,
+    };
+  }
+
+  async matchBankTransaction(
+    organizationId: string,
+    userEmail: string,
+    txnId: string,
+    matched: boolean,
+    statementRef?: string,
+  ) {
+    const [txn] = await this.db
+      .select()
+      .from(popsBankTransactions)
+      .where(
+        and(eq(popsBankTransactions.id, txnId), eq(popsBankTransactions.organizationId, organizationId)),
+      )
+      .limit(1);
+    if (!txn) throw new NotFoundException("Bank transaction not found");
+    const [updated] = await this.db
+      .update(popsBankTransactions)
+      .set({
+        matchedStatus: matched ? "matched" : "unmatched",
+        statementRef: statementRef ?? txn.statementRef,
+      })
+      .where(eq(popsBankTransactions.id, txnId))
+      .returning();
+    await this.audit(
+      organizationId,
+      txn.branchId,
+      "bank",
+      txn.id,
+      matched ? "match" : "unmatch",
+      userEmail,
+      { matchedStatus: txn.matchedStatus },
+      { matchedStatus: updated?.matchedStatus },
+    );
+    return updated;
   }
 
   async listExpenses(organizationId: string, branchCode: string) {

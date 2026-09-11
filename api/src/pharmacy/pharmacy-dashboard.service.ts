@@ -1736,9 +1736,26 @@ export class PharmacyDashboardService {
     );
     const colMap = new Map(colByEmp.map((r) => [r.employeeId, n(r.collection)]));
 
-    const planned = n(summary?.planned);
-    const completed = n(summary?.completed);
-    const missed = Math.max(0, planned - completed);
+    const visitDayParts: SQL[] = [
+      eq(pharmacyVisits.organizationId, organizationId),
+      sql`${pharmacyVisits.plannedDate} >= ${range.fromDate}`,
+      sql`${pharmacyVisits.plannedDate} <= ${range.toDate}`,
+    ];
+    if (scope.salesmanId) visitDayParts.push(eq(pharmacyVisits.employeeId, scope.salesmanId));
+    if (scope.routeId) visitDayParts.push(eq(pharmacyVisits.routeId, scope.routeId));
+    const [visitPlan] = await this.db
+      .select({
+        planned: sql<number>`count(*)::int`,
+        completed: sql<number>`count(*) filter (where ${pharmacyVisits.status} = 'completed')::int`,
+        missed: sql<number>`count(*) filter (where ${pharmacyVisits.status} = 'missed')::int`,
+      })
+      .from(pharmacyVisits)
+      .where(and(...visitDayParts));
+
+    const plannedFromVisits = n(visitPlan?.planned);
+    const planned = plannedFromVisits > 0 ? plannedFromVisits : n(summary?.planned);
+    const completed = plannedFromVisits > 0 ? n(visitPlan?.completed) : n(summary?.completed);
+    const missed = plannedFromVisits > 0 ? n(visitPlan?.missed) : Math.max(0, planned - completed);
 
     return {
       generatedAt: new Date().toISOString(),

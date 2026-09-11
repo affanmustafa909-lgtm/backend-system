@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { and, count, desc, eq, gte, ilike, lte, or, sql, type SQL } from "drizzle-orm";
@@ -17,6 +18,7 @@ import {
 } from "@platform/database-pg";
 import { DRIZZLE } from "../../drizzle/drizzle.tokens";
 import { DeliveryNumberingService } from "../delivery/delivery-numbering.service";
+import { AccountingHooksService } from "../../accounting/accounting-hooks.service";
 
 export type CollectionAllocationInput = { invoiceId: string; amountPkr: number };
 
@@ -63,9 +65,12 @@ const CHEQUE_TRANSITIONS: Record<string, string[]> = {
  */
 @Injectable()
 export class CollectionService {
+  private readonly logger = new Logger(CollectionService.name);
+
   constructor(
     @Inject(DRIZZLE) private readonly db: PlatformPgDb,
     private readonly numbering: DeliveryNumberingService,
+    private readonly accountingHooks: AccountingHooksService,
   ) {}
 
   private async resolveBranch(organizationId: string, branchCode: string) {
@@ -346,7 +351,7 @@ export class CollectionService {
     const paymentMethod = input.paymentMethod ?? "Cash";
     const isCheque = /cheque|check/i.test(paymentMethod);
 
-    return this.numbering.withNumber(organizationId, "collection", async (collectionNumber) => {
+    const created = await this.numbering.withNumber(organizationId, "collection", async (collectionNumber) => {
       try {
         return await this.db.transaction(async (tx) => {
           const [created] = await tx
@@ -402,6 +407,22 @@ export class CollectionService {
         throw err;
       }
     });
+
+    try {
+      await this.accountingHooks.recordDistCollection(organizationId, created.branchId, {
+        collectionNumber: created.collectionNumber,
+        amountPkr: created.amountPkr,
+        unallocatedPkr: created.unallocatedPkr,
+        paymentMethod: created.paymentMethod,
+        chequeStatus: created.chequeStatus,
+        createdAt: created.createdAt,
+      });
+    } catch (err) {
+      this.logger.error(
+        `Collection ${created.collectionNumber} posted without journal: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return created;
   }
 
   /** Allocate remaining unallocatedPkr on an advance collection. */
@@ -423,7 +444,7 @@ export class CollectionService {
       );
     }
 
-    return this.db.transaction(async (tx) => {
+    const allocated = await this.db.transaction(async (tx) => {
       await this.applyAllocations(
         tx as unknown as PlatformPgDb,
         organizationId,
@@ -443,6 +464,21 @@ export class CollectionService {
         .where(eq(pharmacyCollectionAllocations.collectionId, collectionId));
       return { ...updated!, allocations: allocRows };
     });
+
+    try {
+      await this.accountingHooks.recordDistCollectionAllocate(
+        organizationId,
+        collection.branchId,
+        collection.collectionNumber,
+        allocSum,
+        `${collectionId}:${Date.now()}`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Allocate ${collection.collectionNumber} missing journal: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return allocated;
   }
 
   async updateChequeStatus(
@@ -507,6 +543,27 @@ export class CollectionService {
           .where(eq(pharmacyCollections.id, collectionId))
           .returning();
         return { ...updated!, allocations: collection.allocations };
+      }).then(async (updated) => {
+        try {
+          const original = await this.accountingHooks.findBySource(
+            organizationId,
+            "dist_collection",
+            collection.collectionNumber,
+          );
+          if (original) {
+            await this.accountingHooks.reverseJournal(
+              organizationId,
+              original.id,
+              "distribution",
+              `Cheque bounced ${collection.collectionNumber}`,
+            );
+          }
+        } catch (err) {
+          this.logger.error(
+            `Bounce ${collection.collectionNumber} journal reverse failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        return updated;
       });
     }
 
@@ -515,6 +572,22 @@ export class CollectionService {
       .set({ chequeStatus })
       .where(eq(pharmacyCollections.id, collectionId))
       .returning();
+
+    if (chequeStatus === "cleared") {
+      try {
+        await this.accountingHooks.recordDistChequeCleared(
+          organizationId,
+          collection.branchId,
+          collection.collectionNumber,
+          collection.amountPkr,
+        );
+      } catch (err) {
+        this.logger.error(
+          `Cheque clear ${collection.collectionNumber} journal failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
     return { ...updated!, allocations: collection.allocations };
   }
 }
