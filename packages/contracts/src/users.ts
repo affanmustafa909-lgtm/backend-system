@@ -401,16 +401,6 @@ export const POPS_MODULE_ACCESS: { id: string; label: string; description: strin
   { id: "sales.scheme_override", label: "Sales scheme override", description: "Override scheme free quantities" },
   { id: "sales.view_customer_credit", label: "Sales view customer credit", description: "View credit limit and outstanding on Sale Window" },
   { id: "sales.view_margin", label: "Sales view margin", description: "View margin / cost on Sale Window lines" },
-  // Phase 7 delivery / collections / recovery — OR with distribution.deliveries|collections
-  { id: "delivery.view", label: "Delivery view", description: "View delivery dashboard, tickets, and POD status" },
-  { id: "delivery.manage", label: "Delivery manage", description: "Create deliveries and assign drivers/routes" },
-  { id: "delivery.dispatch", label: "Delivery dispatch", description: "Dispatch deliveries to drivers" },
-  { id: "delivery.pod", label: "Proof of delivery", description: "Complete POD, partial, failed, or refused" },
-  { id: "collection.view", label: "Collection view", description: "View collections, aging, and recovery queue" },
-  { id: "collection.create", label: "Collection create", description: "Record customer collections" },
-  { id: "collection.allocate", label: "Collection allocate", description: "Allocate collections across invoices" },
-  { id: "recovery.view", label: "Recovery view", description: "View recovery work queue" },
-  { id: "recovery.action", label: "Recovery action", description: "Record recovery follow-ups and promises to pay" },
 ];
 
 export function hasModuleAccess(permissions: readonly string[], moduleId: string): boolean {
