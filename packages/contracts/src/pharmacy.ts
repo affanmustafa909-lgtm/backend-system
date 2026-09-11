@@ -709,6 +709,10 @@ export const createPharmacyPurchaseOrderSchema = z.object({
   notes: z.string().optional(),
   taxPkr: z.number().min(0).optional(),
   discountPkr: z.number().min(0).optional(),
+  warehouseId: z.string().uuid().optional(),
+  paymentTerms: z.string().optional(),
+  idempotencyKey: z.string().min(1).max(128).optional(),
+  submit: z.boolean().optional(),
   lines: z
     .array(
       z.object({
@@ -716,6 +720,9 @@ export const createPharmacyPurchaseOrderSchema = z.object({
         quantity: z.number().min(1),
         freeQuantity: z.number().min(0).optional(),
         unitCostPkr: z.number().min(0).default(0),
+        discountPkr: z.number().min(0).optional(),
+        taxPkr: z.number().min(0).optional(),
+        notes: z.string().optional(),
       }),
     )
     .min(1),
@@ -729,6 +736,13 @@ export const createPharmacyGrnSchema = z.object({
   supplierInvoiceNumber: z.string().optional(),
   receivedDate: z.string().optional(),
   notes: z.string().optional(),
+  idempotencyKey: z.string().min(1).max(128).optional(),
+  skipPoStatusCheck: z.boolean().optional(),
+  priceVarianceOverride: z.boolean().optional(),
+  priceVarianceReason: z.string().optional(),
+  overReceive: z.boolean().optional(),
+  overReceiveReason: z.string().optional(),
+  blockNearExpiry: z.boolean().optional(),
   lines: z
     .array(
       z.object({
@@ -743,6 +757,101 @@ export const createPharmacyGrnSchema = z.object({
       }),
     )
     .min(1),
+});
+
+export const createPharmacyPurchaseRequisitionSchema = z.object({
+  branchCode: z.string().min(1),
+  warehouseId: z.string().uuid().optional(),
+  priority: z.string().optional(),
+  preferredSupplierId: z.string().uuid().optional(),
+  requiredDate: z.string().optional(),
+  notes: z.string().optional(),
+  lines: z
+    .array(
+      z.object({
+        medicineId: z.string().uuid(),
+        requestedQty: z.number().min(1),
+        suggestedQty: z.number().min(0).optional(),
+        preferredSupplierId: z.string().uuid().optional(),
+        lastPurchasePricePkr: z.number().min(0).nullable().optional(),
+        notes: z.string().optional(),
+      }),
+    )
+    .min(1),
+});
+
+export const updatePharmacyPurchaseRequisitionSchema = z.object({
+  priority: z.string().optional(),
+  preferredSupplierId: z.string().uuid().nullable().optional(),
+  requiredDate: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  warehouseId: z.string().uuid().nullable().optional(),
+  lines: createPharmacyPurchaseRequisitionSchema.shape.lines.optional(),
+});
+
+export const purchaseFromReorderSchema = z.object({
+  branchCode: z.string().min(1),
+  warehouseId: z.string().uuid().optional(),
+  medicineIds: z.array(z.string().uuid()).optional(),
+  preferredSupplierId: z.string().uuid().optional(),
+  notes: z.string().optional(),
+});
+
+export const purchaseRequisitionConvertSchema = z.object({
+  supplierId: z.string().uuid(),
+  warehouseId: z.string().uuid().optional(),
+  branchCode: z.string().optional(),
+  expectedDate: z.string().optional(),
+  notes: z.string().optional(),
+  paymentTerms: z.string().optional(),
+});
+
+export const purchaseRejectSchema = z.object({
+  reason: z.string().min(1),
+});
+
+export const purchaseConfirmSchema = z.object({
+  confirmedDeliveryDate: z.string().optional(),
+  supplierReference: z.string().optional(),
+  confirmedQtyNotes: z.string().optional(),
+});
+
+export const createPharmacyPurchaseInvoiceSchema = z.object({
+  grnId: z.string().uuid(),
+  invoiceNumber: z.string().optional(),
+  supplierInvoiceNumber: z.string().optional(),
+  invoiceDate: z.string().optional(),
+  dueDate: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const createPharmacyPurchaseReturnSchema = z.object({
+  branchCode: z.string().min(1),
+  warehouseId: z.string().uuid().optional(),
+  supplierId: z.string().uuid().optional(),
+  grnId: z.string().uuid().optional(),
+  reason: z.string().optional(),
+  lines: z
+    .array(
+      z.object({
+        medicineId: z.string().uuid(),
+        batchId: z.string().uuid().optional(),
+        quantity: z.number().min(1),
+        unitCostPkr: z.number().min(0).optional(),
+      }),
+    )
+    .min(1),
+});
+
+export const purchasePagedFiltersSchema = z.object({
+  branchCode: z.string().optional(),
+  status: z.string().optional(),
+  supplierId: z.string().uuid().optional(),
+  q: z.string().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  page: z.number().min(1).optional(),
+  pageSize: z.number().min(1).max(100).optional(),
 });
 
 export const createPharmacySaleReturnSchema = z.object({
@@ -769,6 +878,11 @@ export const createPharmacyDistOrderSchema = z.object({
   tradeCustomerId: z.string().uuid(),
   salesmanEmployeeId: z.string().uuid().optional(),
   creditOverride: z.boolean().optional(),
+  creditOverrideReason: z.string().min(1).optional(),
+  priceOverrideReason: z.string().min(1).optional(),
+  idempotencyKey: z.string().min(1).max(128).optional(),
+  /** When true, skip Phase 4 availability gate on submit (default false). */
+  skipStockCheck: z.boolean().optional(),
   notes: z.string().optional(),
   discountPkr: z.number().min(0).optional(),
   taxPkr: z.number().min(0).optional(),
@@ -785,6 +899,35 @@ export const createPharmacyDistOrderSchema = z.object({
     )
     .min(1),
 });
+
+/** Dist Sale Window cart quote (multi-line pricing + schemes). */
+export const pharmacySalesQuoteSchema = z.object({
+  branchCode: z.string().min(1),
+  tradeCustomerId: z.string().uuid(),
+  warehouseId: z.string().uuid().optional(),
+  discountPkr: z.number().min(0).optional(),
+  taxPkr: z.number().min(0).optional(),
+  lines: z
+    .array(
+      z.object({
+        medicineId: z.string().uuid(),
+        quantity: z.number().min(1),
+        unitPricePkr: z.number().min(0).optional(),
+        discountPkr: z.number().min(0).optional(),
+        freeQuantity: z.number().min(0).optional(),
+      }),
+    )
+    .min(1),
+});
+
+export const pharmacySalesValidateSchema = pharmacySalesQuoteSchema.extend({
+  creditOverride: z.boolean().optional(),
+  creditOverrideReason: z.string().optional(),
+  submit: z.boolean().optional(),
+});
+
+export type PharmacySalesQuoteInput = z.infer<typeof pharmacySalesQuoteSchema>;
+export type PharmacySalesValidateInput = z.infer<typeof pharmacySalesValidateSchema>;
 
 export const resolvePharmacyPriceSchema = z.object({
   medicineId: z.string().uuid(),
@@ -812,6 +955,12 @@ export type CreatePharmacySaleReturn = z.infer<typeof createPharmacySaleReturnSc
 export type CreatePharmacyDistOrder = z.infer<typeof createPharmacyDistOrderSchema>;
 export type ResolvePharmacyPrice = z.infer<typeof resolvePharmacyPriceSchema>;
 export type PharmacyResolvedPrice = z.infer<typeof pharmacyResolvedPriceSchema>;
+export type CreatePharmacyPurchaseRequisition = z.infer<typeof createPharmacyPurchaseRequisitionSchema>;
+export type UpdatePharmacyPurchaseRequisition = z.infer<typeof updatePharmacyPurchaseRequisitionSchema>;
+export type CreatePharmacyPurchaseInvoice = z.infer<typeof createPharmacyPurchaseInvoiceSchema>;
+export type CreatePharmacyPurchaseReturn = z.infer<typeof createPharmacyPurchaseReturnSchema>;
+export type PurchaseFromReorder = z.infer<typeof purchaseFromReorderSchema>;
+export type PurchaseRequisitionConvert = z.infer<typeof purchaseRequisitionConvertSchema>;
 
 export const pharmacyPurchaseLineSchema = z.object({
   poNumber: z.string(),
@@ -934,3 +1083,161 @@ export const pharmacyTaxComplianceSchema = z.object({
     }),
   ),
 });
+
+// ── Phase 7 Delivery + Collections + Aging + Recovery ───────────────────────
+
+export const createPharmacyDriverSchema = z.object({
+  branchCode: z.string().optional(),
+  code: z.string().min(1),
+  name: z.string().min(1),
+  phone: z.string().optional(),
+  status: z.enum(["active", "inactive"]).optional(),
+  vehicleId: z.string().uuid().optional(),
+  notes: z.string().optional(),
+});
+export const updatePharmacyDriverSchema = z.object({
+  name: z.string().min(1).optional(),
+  phone: z.string().optional(),
+  status: z.enum(["active", "inactive"]).optional(),
+  vehicleId: z.string().uuid().nullable().optional(),
+  notes: z.string().optional(),
+});
+
+export const createPharmacyVehicleSchema = z.object({
+  branchCode: z.string().optional(),
+  code: z.string().min(1),
+  registrationNo: z.string().min(1),
+  vehicleType: z.string().optional(),
+  status: z.enum(["available", "assigned", "on_route", "maintenance", "inactive"]).optional(),
+  notes: z.string().optional(),
+});
+export const updatePharmacyVehicleSchema = z.object({
+  registrationNo: z.string().min(1).optional(),
+  vehicleType: z.string().optional(),
+  status: z.enum(["available", "assigned", "on_route", "maintenance", "inactive"]).optional(),
+  notes: z.string().optional(),
+});
+
+export const createPharmacyDeliverySchema = z
+  .object({
+    branchCode: z.string().min(1),
+    orderId: z.string().uuid().optional(),
+    invoiceId: z.string().uuid().optional(),
+    tradeCustomerId: z.string().uuid().optional(),
+    riderName: z.string().optional(),
+    driverId: z.string().uuid().optional(),
+    vehicleId: z.string().uuid().optional(),
+    routeId: z.string().uuid().optional(),
+    warehouseId: z.string().uuid().optional(),
+    priority: z.string().optional(),
+    address: z.string().optional(),
+    contactName: z.string().optional(),
+    contactPhone: z.string().optional(),
+    idempotencyKey: z.string().min(1).max(128).optional(),
+  })
+  .refine((v) => Boolean(v.invoiceId || v.orderId || v.tradeCustomerId), {
+    message: "invoiceId, orderId, or tradeCustomerId is required",
+  });
+
+export const pharmacyDeliveryAssignSchema = z.object({
+  driverId: z.string().uuid().nullable().optional(),
+  vehicleId: z.string().uuid().nullable().optional(),
+  routeId: z.string().uuid().nullable().optional(),
+  riderName: z.string().nullable().optional(),
+  priority: z.string().optional(),
+});
+
+export const pharmacyDeliveryDispatchSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1),
+});
+
+export const pharmacyDeliveryPodSchema = z.object({
+  status: z.enum(["delivered", "partial", "failed", "refused"]),
+  receiverName: z.string().optional(),
+  signatureRef: z.string().optional(),
+  photoRef: z.string().optional(),
+  failedReason: z.string().optional(),
+  refusalReason: z.string().optional(),
+  podNotes: z.string().optional(),
+  collectedPkr: z.number().min(0).optional(),
+  requireReceiverName: z.boolean().optional(),
+  lines: z
+    .array(
+      z.object({
+        lineId: z.string().uuid(),
+        deliveredQty: z.number().int().min(0).optional(),
+        returnedQty: z.number().int().min(0).optional(),
+        notes: z.string().optional(),
+      }),
+    )
+    .optional(),
+  idempotencyKey: z.string().min(1).max(128).optional(),
+});
+
+export const pharmacyCollectionAllocationSchema = z.object({
+  invoiceId: z.string().uuid(),
+  amountPkr: z.number().positive(),
+});
+
+export const createPharmacyCollectionSchema = z
+  .object({
+    branchCode: z.string().min(1),
+    tradeCustomerId: z.string().uuid(),
+    amountPkr: z.number().positive(),
+    paymentMethod: z.string().optional(),
+    invoiceId: z.string().uuid().optional(),
+    patientId: z.string().uuid().optional(),
+    salesmanEmployeeId: z.string().uuid().optional(),
+    notes: z.string().optional(),
+    allocations: z.array(pharmacyCollectionAllocationSchema).optional(),
+    /** Hold as unallocated advance — does not reduce outstanding until allocate. */
+    advance: z.boolean().optional(),
+    chequeNumber: z.string().optional(),
+    chequeBank: z.string().optional(),
+    chequeDate: z.string().optional(),
+    chequeStatus: z.enum(["pending", "deposited", "cleared", "bounced", "cancelled"]).optional(),
+    idempotencyKey: z.string().min(1).max(128).optional(),
+  })
+  .superRefine((v, ctx) => {
+    const hasAlloc = (v.allocations?.length ?? 0) > 0 || Boolean(v.invoiceId);
+    if (!hasAlloc && !v.advance) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "allocations (or invoiceId) required, or set advance=true",
+      });
+    }
+  });
+
+export const pharmacyCollectionAllocateSchema = z.object({
+  allocations: z.array(pharmacyCollectionAllocationSchema).min(1),
+});
+
+export const pharmacyCollectionChequeStatusSchema = z.object({
+  chequeStatus: z.enum(["pending", "deposited", "cleared", "bounced", "cancelled"]),
+});
+
+export const pharmacyAgingQuerySchema = z.object({
+  branchCode: z.string().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  pageSize: z.coerce.number().int().positive().max(100).optional(),
+  minOutstanding: z.coerce.number().min(0).optional(),
+});
+
+export const createPharmacyPromiseToPaySchema = z.object({
+  branchCode: z.string().optional(),
+  tradeCustomerId: z.string().uuid(),
+  invoiceId: z.string().uuid().optional(),
+  promisedAmountPkr: z.number().positive(),
+  promiseDate: z.string().min(1),
+  notes: z.string().optional(),
+});
+
+export const updatePharmacyPromiseStatusSchema = z.object({
+  status: z.enum(["open", "kept", "broken", "cancelled"]),
+});
+
+export type CreatePharmacyDriver = z.infer<typeof createPharmacyDriverSchema>;
+export type CreatePharmacyVehicle = z.infer<typeof createPharmacyVehicleSchema>;
+export type CreatePharmacyDelivery = z.infer<typeof createPharmacyDeliverySchema>;
+export type CreatePharmacyCollection = z.infer<typeof createPharmacyCollectionSchema>;
+export type CreatePharmacyPromiseToPay = z.infer<typeof createPharmacyPromiseToPaySchema>;

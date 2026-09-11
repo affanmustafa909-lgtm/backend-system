@@ -78,18 +78,36 @@ export const pharmacyMedicineBatches = pgTable("pharmacy_medicine_batches", {
   batchNumber: text("batch_number").notNull(),
   manufacturingDate: date("manufacturing_date"),
   expiryDate: date("expiry_date").notNull(),
-  /** Available quantity in base units (tablets). */
+  /**
+   * AVAILABLE quantity in base units (tablets).
+   * Phase 4: stock states are kept in separate columns and are never merged.
+   * physical = quantity + reservedQuantity + damagedQuantity + quarantineQuantity + blockedQuantity
+   * available = quantity, minus EXPIRED which is derived from expiryDate (not a stored bucket).
+   */
   quantity: integer("quantity").notNull().default(0),
   reservedQuantity: integer("reserved_quantity").notNull().default(0),
   damagedQuantity: integer("damaged_quantity").notNull().default(0),
+  quarantineQuantity: integer("quarantine_quantity").notNull().default(0),
+  blockedQuantity: integer("blocked_quantity").notNull().default(0),
   freeQuantity: integer("free_quantity").notNull().default(0),
   purchaseRatePkr: integer("purchase_rate_pkr").notNull().default(0),
   saleRatePkr: integer("sale_rate_pkr").notNull().default(0),
+  /** Traceability: which supplier/GRN brought this batch in (bare uuid, no FK, to avoid import cycles). */
+  supplierId: uuid("supplier_id"),
+  grnId: uuid("grn_id"),
+  /** Manual hold flag. Derived status (expired/near-expiry) is computed, never stored. */
   status: text("status").notNull().default("active"),
+  holdReason: text("hold_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("pharmacy_medicine_batches_medicine_expiry_idx").on(t.medicineId, t.expiryDate),
   index("pharmacy_medicine_batches_expiry_qty_idx").on(t.expiryDate, t.quantity),
+  /** FEFO allocation and per-warehouse stock reads. */
+  index("pharmacy_medicine_batches_medicine_wh_expiry_idx").on(t.medicineId, t.warehouseId, t.expiryDate),
+  /** Warehouse stock listing / valuation scans. */
+  index("pharmacy_medicine_batches_wh_qty_idx").on(t.warehouseId, t.quantity),
+  /** receiveBatch merge lookup. */
+  index("pharmacy_medicine_batches_medicine_batchno_idx").on(t.medicineId, t.batchNumber),
 ]);
 
 export const pharmacyPatients = pgTable("pharmacy_patients", {

@@ -57,6 +57,7 @@ import {
 import { AccountingHooksService } from "../accounting/accounting-hooks.service";
 import { DRIZZLE } from "../drizzle/drizzle.tokens";
 import { TaxAuthorityService } from "../tax-authority/tax-authority.service";
+import { MOVEMENT_TYPES } from "./inventory/stock-ledger.service";
 import { mapMedicineRow, parseJsonArray, parsePaymentsJson, stringifyJsonArray } from "./pharmacy-mappers";
 import { PharmacyStockEngine, type StockTx } from "./pharmacy-stock.engine";
 
@@ -1197,64 +1198,82 @@ export class PharmacyService implements OnModuleInit {
 
   async createMedicine(organizationId: string, input: CreateMedicine) {
     const branch = await this.resolveBranch(organizationId, input.branchCode);
-    const [med] = await this.db
-      .insert(pharmacyMedicines)
-      .values({
-        organizationId,
-        branchId: branch.id,
-        sku: input.sku.trim(),
-        name: input.name.trim(),
-        genericName: input.genericName?.trim() || null,
-        dosageStrength: input.dosageStrength?.trim() || null,
-        presentation: input.presentation?.trim() || null,
-        brandName: input.brandName?.trim() || null,
-        category: input.category ?? "Tablet",
-        manufacturer: input.manufacturer?.trim() || null,
-        barcode: input.barcode?.trim() || null,
-        alternateBarcode: input.alternateBarcode?.trim() || null,
-        purchasePricePkr: Math.round(input.purchasePrice ?? 0),
-        sellingPricePkr: Math.round(input.sellingPrice ?? 0),
-        costPricePkr: Math.round(input.costPrice ?? input.purchasePrice ?? 0),
-        wholesalePricePkr: Math.round(input.wholesalePrice ?? 0),
-        dealerPricePkr: Math.round(input.dealerPrice ?? 0),
-        minSalePricePkr: Math.round(input.minSalePrice ?? 0),
-        maxRetailPricePkr: Math.round(input.maxRetailPrice ?? 0),
-        taxPct: Math.round(input.taxPct ?? 0),
-        reorderLevel: Math.round(input.reorderLevel ?? 10),
-        suggestedReorderQty: Math.round(input.suggestedReorderQty ?? (input.reorderLevel ?? 10) * 2),
-        currentStock: Math.round(input.currentStock ?? 0),
-        unit: input.unit ?? "Piece",
-        rackLocation: input.rackLocation?.trim() || null,
-        shelfLocation: input.shelfLocation?.trim() || null,
-        aisleLocation: input.aisleLocation?.trim() || null,
-        tabletsPerStrip: Math.max(1, Math.round(input.tabletsPerStrip ?? 1)),
-        stripsPerBox: Math.max(1, Math.round(input.stripsPerBox ?? 1)),
-        isControlled: input.isControlled ?? false,
-        prescriptionRequired: input.prescriptionRequired ?? false,
-        companyId: input.companyId ?? null,
-        status: input.status?.trim() || "active",
-        warningsJson: stringifyJsonArray(input.warnings),
-        instructionsJson: stringifyJsonArray(input.instructions),
-      })
-      .returning();
-    if (!med) throw new BadRequestException("Failed to create medicine");
-    if (input.batchNumber && input.expiryDate) {
-      await this.db.insert(pharmacyMedicineBatches).values({
-        medicineId: med.id,
-        batchNumber: input.batchNumber.trim(),
-        expiryDate: input.expiryDate,
-        quantity: med.currentStock,
-      });
-    } else if (med.currentStock > 0) {
-      const defaultExpiry = new Date();
-      defaultExpiry.setFullYear(defaultExpiry.getFullYear() + 2);
-      await this.db.insert(pharmacyMedicineBatches).values({
-        medicineId: med.id,
-        batchNumber: `OPEN-${med.sku}`,
-        expiryDate: defaultExpiry.toISOString().slice(0, 10),
-        quantity: med.currentStock,
-      });
-    }
+    const med = await this.db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(pharmacyMedicines)
+        .values({
+          organizationId,
+          branchId: branch.id,
+          sku: input.sku.trim(),
+          name: input.name.trim(),
+          genericName: input.genericName?.trim() || null,
+          dosageStrength: input.dosageStrength?.trim() || null,
+          presentation: input.presentation?.trim() || null,
+          brandName: input.brandName?.trim() || null,
+          category: input.category ?? "Tablet",
+          manufacturer: input.manufacturer?.trim() || null,
+          barcode: input.barcode?.trim() || null,
+          alternateBarcode: input.alternateBarcode?.trim() || null,
+          purchasePricePkr: Math.round(input.purchasePrice ?? 0),
+          sellingPricePkr: Math.round(input.sellingPrice ?? 0),
+          costPricePkr: Math.round(input.costPrice ?? input.purchasePrice ?? 0),
+          wholesalePricePkr: Math.round(input.wholesalePrice ?? 0),
+          dealerPricePkr: Math.round(input.dealerPrice ?? 0),
+          minSalePricePkr: Math.round(input.minSalePrice ?? 0),
+          maxRetailPricePkr: Math.round(input.maxRetailPrice ?? 0),
+          taxPct: Math.round(input.taxPct ?? 0),
+          reorderLevel: Math.round(input.reorderLevel ?? 10),
+          suggestedReorderQty: Math.round(input.suggestedReorderQty ?? (input.reorderLevel ?? 10) * 2),
+          currentStock: Math.round(input.currentStock ?? 0),
+          unit: input.unit ?? "Piece",
+          rackLocation: input.rackLocation?.trim() || null,
+          shelfLocation: input.shelfLocation?.trim() || null,
+          aisleLocation: input.aisleLocation?.trim() || null,
+          tabletsPerStrip: Math.max(1, Math.round(input.tabletsPerStrip ?? 1)),
+          stripsPerBox: Math.max(1, Math.round(input.stripsPerBox ?? 1)),
+          isControlled: input.isControlled ?? false,
+          prescriptionRequired: input.prescriptionRequired ?? false,
+          companyId: input.companyId ?? null,
+          status: input.status?.trim() || "active",
+          warningsJson: stringifyJsonArray(input.warnings),
+          instructionsJson: stringifyJsonArray(input.instructions),
+        })
+        .returning();
+      if (!created) throw new BadRequestException("Failed to create medicine");
+
+      // Opening stock is posted through the engine so it leaves an
+      // OPENING_STOCK ledger movement instead of a hand-written batch row with
+      // no audit trail. Batch number and expiry defaults are kept identical to
+      // the pre-Phase-4 behaviour so existing screens see the same batch.
+      if (created.currentStock > 0) {
+        const defaultExpiry = new Date();
+        defaultExpiry.setFullYear(defaultExpiry.getFullYear() + 2);
+        const opening =
+          input.batchNumber && input.expiryDate
+            ? { batchNumber: input.batchNumber.trim(), expiryDate: input.expiryDate }
+            : {
+                batchNumber: `OPEN-${created.sku}`,
+                expiryDate: defaultExpiry.toISOString().slice(0, 10),
+              };
+        const warehouse = await this.stock.ensureDefaultWarehouse(organizationId, branch.id, tx);
+        await this.stock.receiveBatch(tx, {
+          organizationId,
+          branchId: branch.id,
+          warehouseId: warehouse.id,
+          medicineId: created.id,
+          batchNumber: opening.batchNumber,
+          expiryDate: opening.expiryDate,
+          quantity: created.currentStock,
+          movementType: MOVEMENT_TYPES.OPENING_STOCK,
+          referenceType: "opening_stock",
+          referenceId: created.id,
+          idempotencyKey: `opening:${created.id}`,
+        });
+      }
+
+      return created;
+    });
+
     return this.listMedicines(organizationId, input.branchCode).then((list) => list.find((m) => m.id === med.id)!);
   }
 
@@ -1307,6 +1326,22 @@ export class PharmacyService implements OnModuleInit {
       .limit(1);
     if (!existing) throw new NotFoundException("Medicine not found");
 
+    // `currentStock` is a cache of SUM(batches.quantity) owned by the stock
+    // engine. Writing it from the edit screen would desync the cache from the
+    // batch rows with no ledger movement behind the change, so a value that
+    // disagrees with the batches is ignored instead of overwriting the balance.
+    // The field itself stays accepted so existing callers keep working.
+    let nextCurrentStock = existing.currentStock;
+    if (input.currentStock !== undefined) {
+      const [agg] = await this.db
+        .select({ total: sql<number>`coalesce(sum(${pharmacyMedicineBatches.quantity}), 0)` })
+        .from(pharmacyMedicineBatches)
+        .where(eq(pharmacyMedicineBatches.medicineId, medicineId));
+      const batchTotal = Number(agg?.total ?? 0);
+      const requested = Math.round(input.currentStock);
+      if (requested === batchTotal) nextCurrentStock = requested;
+    }
+
     const [row] = await this.db
       .update(pharmacyMedicines)
       .set({
@@ -1342,7 +1377,7 @@ export class PharmacyService implements OnModuleInit {
           input.suggestedReorderQty !== undefined
             ? Math.round(input.suggestedReorderQty)
             : existing.suggestedReorderQty,
-        currentStock: input.currentStock !== undefined ? Math.round(input.currentStock) : existing.currentStock,
+        currentStock: nextCurrentStock,
         unit: input.unit ?? existing.unit,
         rackLocation: input.rackLocation !== undefined ? input.rackLocation.trim() || null : existing.rackLocation,
         shelfLocation: input.shelfLocation !== undefined ? input.shelfLocation.trim() || null : existing.shelfLocation,
@@ -2410,19 +2445,24 @@ export class PharmacyService implements OnModuleInit {
     const branch = await this.resolveBranch(organizationId, branchCode);
     const rows = await this.db
       .select({
-        poNumber: popsPurchaseOrders.poNumber,
+        poNumber: pharmacyPurchaseOrders.poNumber,
         supplierName: popsSuppliers.name,
-        status: popsPurchaseOrders.status,
-        totalAmount: popsPurchaseOrders.totalAmountPkr,
-        createdAt: popsPurchaseOrders.createdAt,
+        status: pharmacyPurchaseOrders.status,
+        totalAmount: pharmacyPurchaseOrders.totalPkr,
+        createdAt: pharmacyPurchaseOrders.createdAt,
       })
-      .from(popsPurchaseOrders)
-      .innerJoin(popsSuppliers, eq(popsSuppliers.id, popsPurchaseOrders.supplierId))
-      .where(and(eq(popsPurchaseOrders.organizationId, organizationId), eq(popsPurchaseOrders.branchId, branch.id)))
-      .orderBy(desc(popsPurchaseOrders.createdAt));
+      .from(pharmacyPurchaseOrders)
+      .leftJoin(popsSuppliers, eq(popsSuppliers.id, pharmacyPurchaseOrders.supplierId))
+      .where(
+        and(
+          eq(pharmacyPurchaseOrders.organizationId, organizationId),
+          eq(pharmacyPurchaseOrders.branchId, branch.id),
+        ),
+      )
+      .orderBy(desc(pharmacyPurchaseOrders.createdAt));
     return rows.map((r) => ({
       poNumber: r.poNumber,
-      supplierName: r.supplierName,
+      supplierName: r.supplierName ?? "—",
       status: r.status,
       totalAmount: r.totalAmount,
       createdAt: r.createdAt.toISOString(),
@@ -2436,11 +2476,34 @@ export class PharmacyService implements OnModuleInit {
       .from(popsSuppliers)
       .where(and(eq(popsSuppliers.organizationId, organizationId), eq(popsSuppliers.branchId, branch.id)));
     const pos = await this.db
-      .select({ supplierId: popsPurchaseOrders.supplierId, total: popsPurchaseOrders.totalAmountPkr })
-      .from(popsPurchaseOrders)
-      .where(and(eq(popsPurchaseOrders.organizationId, organizationId), eq(popsPurchaseOrders.branchId, branch.id)));
+      .select({
+        supplierId: pharmacyPurchaseOrders.supplierId,
+        total: pharmacyPurchaseOrders.totalPkr,
+        createdAt: pharmacyPurchaseOrders.createdAt,
+      })
+      .from(pharmacyPurchaseOrders)
+      .where(
+        and(
+          eq(pharmacyPurchaseOrders.organizationId, organizationId),
+          eq(pharmacyPurchaseOrders.branchId, branch.id),
+        ),
+      );
+    const grns = await this.db
+      .select({
+        supplierId: pharmacyGrns.supplierId,
+        total: pharmacyGrns.totalPkr,
+      })
+      .from(pharmacyGrns)
+      .where(and(eq(pharmacyGrns.organizationId, organizationId), eq(pharmacyGrns.branchId, branch.id)));
+
     return suppliers.map((s) => {
-      const totalPurchases = pos.filter((p) => p.supplierId === s.id).reduce((sum, p) => sum + p.total, 0);
+      const supplierPos = pos.filter((p) => p.supplierId === s.id);
+      const totalPurchases = grns
+        .filter((g) => g.supplierId === s.id)
+        .reduce((sum, g) => sum + g.total, 0);
+      const lastOrder =
+        supplierPos.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]?.createdAt.toISOString() ??
+        null;
       return {
         id: s.id,
         name: s.name,
@@ -2448,7 +2511,7 @@ export class PharmacyService implements OnModuleInit {
         totalPurchases,
         openingBalancePkr: s.openingBalancePkr,
         amountDue: s.openingBalancePkr + totalPurchases,
-        lastOrder: null as string | null,
+        lastOrder,
       };
     });
   }

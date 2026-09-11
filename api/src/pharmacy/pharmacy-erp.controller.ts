@@ -341,13 +341,13 @@ export class PharmacyErpController {
   }
 
   @Get("purchase-orders")
-  @RequirePermissions("pharmacy.purchase.view", "pharmacy.view", "pops.read")
+  @RequirePermissions("purchase.view", "purchase.order", "pharmacy.purchase.view", "pharmacy.view", "pops.read")
   listPurchaseOrders(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode?: string) {
     return this.erp.listPurchaseOrders(user.organizationId, branchCode?.trim());
   }
 
   @Post("purchase-orders")
-  @RequirePermissions("pharmacy.purchase.manage", "pops.inventory.manage")
+  @RequirePermissions("purchase.order", "pharmacy.purchase.manage", "pops.inventory.manage")
   createPurchaseOrder(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
     return this.erp.createPurchaseOrder(
       user.organizationId,
@@ -357,21 +357,31 @@ export class PharmacyErpController {
   }
 
   @Post("purchase-orders/:id/approve")
-  @RequirePermissions("pharmacy.purchase.manage", "pops.inventory.manage")
+  @RequirePermissions("purchase.order.approve", "pharmacy.purchase.manage", "pops.inventory.manage")
   approvePurchaseOrder(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string) {
     return this.erp.approvePurchaseOrder(user.organizationId, id);
   }
 
   @Get("grns")
-  @RequirePermissions("pharmacy.purchase.view", "pharmacy.view", "pops.read")
+  @RequirePermissions("purchase.view", "purchase.grn", "pharmacy.purchase.view", "pharmacy.view", "pops.read")
   listGrns(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode?: string) {
     return this.erp.listGrns(user.organizationId, branchCode?.trim());
   }
 
   @Post("grns")
-  @RequirePermissions("pharmacy.purchase.manage", "pops.inventory.manage")
+  @RequirePermissions("purchase.grn", "purchase.grn.post", "pharmacy.purchase.manage", "pops.inventory.manage")
   createGrn(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
-    return this.erp.createGrn(user.organizationId, createPharmacyGrnSchema.parse(body), user.sub);
+    // `idempotencyKey` is not part of the GRN contract, so it is read off the raw
+    // body: callers that omit it keep the exact pre-Phase-4 behaviour.
+    const rawKey = (body as { idempotencyKey?: unknown })?.idempotencyKey;
+    return this.erp.createGrn(
+      user.organizationId,
+      {
+        ...createPharmacyGrnSchema.parse(body),
+        ...(typeof rawKey === "string" && rawKey.trim() ? { idempotencyKey: rawKey.trim() } : {}),
+      },
+      user.sub,
+    );
   }
 
   @Get("sales/returns")
@@ -391,13 +401,13 @@ export class PharmacyErpController {
   }
 
   @Get("purchase-returns")
-  @RequirePermissions("pharmacy.purchase.view", "pharmacy.view", "pops.read")
+  @RequirePermissions("purchase.view", "purchase.return", "pharmacy.purchase.view", "pharmacy.view", "pops.read")
   listPurchaseReturns(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode?: string) {
     return this.erp.listPurchaseReturns(user.organizationId, branchCode?.trim());
   }
 
   @Post("purchase-returns")
-  @RequirePermissions("pharmacy.purchase.manage", "pops.inventory.manage")
+  @RequirePermissions("purchase.return", "pharmacy.purchase.manage", "pops.inventory.manage")
   createPurchaseReturn(
     @CurrentUser() user: AccessJwtPayload,
     @Body()
@@ -450,7 +460,7 @@ export class PharmacyErpController {
     @Param("id") id: string,
     @Body() body: { status: string },
   ) {
-    return this.erp.advanceDistOrderStatus(user.organizationId, id, body.status);
+    return this.erp.advanceDistOrderStatus(user.organizationId, id, body.status, user.sub);
   }
 
   @Get("distribution/ps-window")
