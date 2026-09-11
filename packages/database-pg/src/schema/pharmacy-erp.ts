@@ -1,10 +1,20 @@
-import { boolean, date, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 import { popsBranches } from "./operations";
 import { users } from "./users";
 import { pharmacyMedicines, pharmacyMedicineBatches, pharmacyPatients, pharmacySales } from "./pharmacy";
 import { popsEmployees } from "./hr";
 import { popsSuppliers } from "./inventory";
+
+/**
+ * Dashboard secondary indexes (Phase 2):
+ * - pharmacy_dist_orders: org+branch+created, org+status, org+salesman+created
+ * - pharmacy_dist_invoices: org+branch+created, org+invoiceDate, org+customer
+ * - pharmacy_collections / deliveries / wholesale_returns: org+branch(+status|created)
+ * - pharmacy_trade_customers: org+branch, org+outstanding
+ * - pharmacy_visits: org+visitedAt; pharmacy_assignments: org+date; pharmacy_targets: org+employee+period
+ * See also pharmacy.ts batch/medicine indexes; docs/PHASE_2_INDEXES.md
+ */
 
 /** Manufacturer / marketing company master. */
 export const pharmacyCompanies = pgTable("pharmacy_companies", {
@@ -26,6 +36,100 @@ export const pharmacyCompanies = pgTable("pharmacy_companies", {
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Active pharmaceutical ingredient / generic master. */
+export const pharmacyGenerics = pgTable("pharmacy_generics", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("pharmacy_generics_org_code_uidx").on(t.organizationId, t.code),
+]);
+
+/** Brand / trade-name master (optional company link). */
+export const pharmacyBrands = pgTable("pharmacy_brands", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  companyId: uuid("company_id").references(() => pharmacyCompanies.id, { onDelete: "set null" }),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("pharmacy_brands_org_code_uidx").on(t.organizationId, t.code),
+]);
+
+/** Therapeutic / retail category hierarchy. */
+export const pharmacyCategories = pgTable("pharmacy_categories", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  parentId: uuid("parent_id"),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("pharmacy_categories_org_code_uidx").on(t.organizationId, t.code),
+  index("pharmacy_categories_org_parent_idx").on(t.organizationId, t.parentId),
+]);
+
+export const pharmacyDosageForms = pgTable("pharmacy_dosage_forms", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("pharmacy_dosage_forms_org_code_uidx").on(t.organizationId, t.code),
+]);
+
+export const pharmacyUnits = pgTable("pharmacy_units", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  baseUnit: text("base_unit"),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("pharmacy_units_org_code_uidx").on(t.organizationId, t.code),
+]);
+
+export const pharmacyTaxProfiles = pgTable("pharmacy_tax_profiles", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  ratePct: integer("rate_pct").notNull().default(0),
+  taxType: text("tax_type").notNull().default("percentage"),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("pharmacy_tax_profiles_org_code_uidx").on(t.organizationId, t.code),
+]);
 
 export const pharmacyWarehouses = pgTable("pharmacy_warehouses", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -199,7 +303,10 @@ export const pharmacyTradeCustomers = pgTable("pharmacy_trade_customers", {
   taxInfo: text("tax_info"),
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("pharmacy_trade_customers_org_branch_idx").on(t.organizationId, t.branchId),
+  index("pharmacy_trade_customers_org_outstanding_idx").on(t.organizationId, t.outstandingPkr),
+]);
 
 export const pharmacySalesForceProfiles = pgTable("pharmacy_sales_force_profiles", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -461,7 +568,15 @@ export const pharmacyDistOrders = pgTable("pharmacy_dist_orders", {
   deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("pharmacy_dist_orders_org_branch_created_idx").on(t.organizationId, t.branchId, t.createdAt),
+  index("pharmacy_dist_orders_org_status_idx").on(t.organizationId, t.status),
+  index("pharmacy_dist_orders_org_salesman_created_idx").on(
+    t.organizationId,
+    t.salesmanEmployeeId,
+    t.createdAt,
+  ),
+]);
 
 export const pharmacyDistOrderLines = pgTable("pharmacy_dist_order_lines", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -502,7 +617,11 @@ export const pharmacyDistInvoices = pgTable("pharmacy_dist_invoices", {
   totalPkr: integer("total_pkr").notNull().default(0),
   status: text("status").notNull().default("posted"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("pharmacy_dist_invoices_org_branch_created_idx").on(t.organizationId, t.branchId, t.createdAt),
+  index("pharmacy_dist_invoices_org_invoice_date_idx").on(t.organizationId, t.invoiceDate),
+  index("pharmacy_dist_invoices_org_customer_idx").on(t.organizationId, t.tradeCustomerId),
+]);
 
 export const pharmacyDistInvoiceLines = pgTable("pharmacy_dist_invoice_lines", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -541,7 +660,9 @@ export const pharmacyDeliveries = pgTable("pharmacy_deliveries", {
   collectedPkr: integer("collected_pkr").notNull().default(0),
   deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("pharmacy_deliveries_org_branch_status_idx").on(t.organizationId, t.branchId, t.status),
+]);
 
 export const pharmacyCollections = pgTable("pharmacy_collections", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -565,7 +686,9 @@ export const pharmacyCollections = pgTable("pharmacy_collections", {
   notes: text("notes"),
   createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("pharmacy_collections_org_branch_created_idx").on(t.organizationId, t.branchId, t.createdAt),
+]);
 
 export const pharmacyAssignments = pgTable("pharmacy_assignments", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -590,7 +713,9 @@ export const pharmacyAssignments = pgTable("pharmacy_assignments", {
   status: text("status").notNull().default("assigned"),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("pharmacy_assignments_org_date_idx").on(t.organizationId, t.assignmentDate),
+]);
 
 export const pharmacyVisits = pgTable("pharmacy_visits", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -614,7 +739,9 @@ export const pharmacyVisits = pgTable("pharmacy_visits", {
   collectionId: uuid("collection_id").references(() => pharmacyCollections.id, { onDelete: "set null" }),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("pharmacy_visits_org_visited_idx").on(t.organizationId, t.visitedAt),
+]);
 
 export const pharmacyTargets = pgTable("pharmacy_targets", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -633,7 +760,14 @@ export const pharmacyTargets = pgTable("pharmacy_targets", {
   actualSalesPkr: integer("actual_sales_pkr").notNull().default(0),
   actualCollectionPkr: integer("actual_collection_pkr").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("pharmacy_targets_org_employee_period_idx").on(
+    t.organizationId,
+    t.employeeId,
+    t.periodStart,
+    t.periodEnd,
+  ),
+]);
 
 export const pharmacyPriceLists = pgTable("pharmacy_price_lists", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -678,6 +812,7 @@ export const pharmacySchemes = pgTable("pharmacy_schemes", {
   freeQty: integer("free_qty").notNull().default(0),
   startDate: date("start_date"),
   endDate: date("end_date"),
+  priority: integer("priority").notNull().default(0),
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -718,7 +853,13 @@ export const pharmacyWholesaleReturns = pgTable("pharmacy_wholesale_returns", {
   status: text("status").notNull().default("posted"),
   createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("pharmacy_wholesale_returns_org_branch_created_idx").on(
+    t.organizationId,
+    t.branchId,
+    t.createdAt,
+  ),
+]);
 
 export const pharmacyWholesaleReturnLines = pgTable("pharmacy_wholesale_return_lines", {
   id: uuid("id").defaultRandom().primaryKey(),

@@ -2409,88 +2409,529 @@ export class PharmacyErpService {
     const branch = branchCode?.trim()
       ? await this.resolveBranch(organizationId, branchCode.trim())
       : null;
+
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    const in30 = new Date();
+    const yesterdayStart = new Date(todayStart);
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+    const monthStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
+    const lastMonthStart = new Date(todayStart.getFullYear(), todayStart.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(monthStart.getTime() - 1);
+
+    const todayStr = todayStart.toISOString().slice(0, 10);
+    const in7 = new Date(todayStart);
+    in7.setDate(in7.getDate() + 7);
+    const in30 = new Date(todayStart);
     in30.setDate(in30.getDate() + 30);
-    const expiryTo = in30.toISOString().slice(0, 10);
+    const expiry7 = in7.toISOString().slice(0, 10);
+    const expiry30 = in30.toISOString().slice(0, 10);
 
     const orderOrg = eq(pharmacyDistOrders.organizationId, organizationId);
-    const orderWhere = branch
-      ? and(orderOrg, eq(pharmacyDistOrders.branchId, branch.id))
-      : orderOrg;
+    const orderWhere = branch ? and(orderOrg, eq(pharmacyDistOrders.branchId, branch.id)) : orderOrg;
 
-    const [orderAgg] = await this.db
-      .select({
-        ordersToday: sql<number>`count(*) filter (where ${pharmacyDistOrders.createdAt} >= ${todayStart})::int`,
-        salesTodayPkr: sql<number>`coalesce(sum(${pharmacyDistOrders.totalPkr}) filter (where ${pharmacyDistOrders.createdAt} >= ${todayStart}), 0)::int`,
-        pendingApproval: sql<number>`count(*) filter (where ${pharmacyDistOrders.status} in ('draft','booked','submitted'))::int`,
-        inWarehousePipeline: sql<number>`count(*) filter (where ${pharmacyDistOrders.status} in ('approved','stock_reserved','picking','packed','ready_for_dispatch'))::int`,
-      })
-      .from(pharmacyDistOrders)
-      .where(orderWhere);
+    const invOrg = eq(pharmacyDistInvoices.organizationId, organizationId);
+    const invWhere = branch ? and(invOrg, eq(pharmacyDistInvoices.branchId, branch.id)) : invOrg;
 
-    const deliveryOrg = eq(pharmacyDeliveries.organizationId, organizationId);
-    const deliveryWhere = branch
-      ? and(deliveryOrg, eq(pharmacyDeliveries.branchId, branch.id))
-      : deliveryOrg;
-    const [deliveryAgg] = await this.db
-      .select({
-        pendingDeliveries: sql<number>`count(*) filter (where ${pharmacyDeliveries.status} <> 'delivered')::int`,
-      })
-      .from(pharmacyDeliveries)
-      .where(deliveryWhere);
+    const delOrg = eq(pharmacyDeliveries.organizationId, organizationId);
+    const delWhere = branch ? and(delOrg, eq(pharmacyDeliveries.branchId, branch.id)) : delOrg;
 
-    const [custAgg] = await this.db
-      .select({
-        outstandingPkr: sql<number>`coalesce(sum(${pharmacyTradeCustomers.outstandingPkr}), 0)::int`,
-        overdueAccounts: sql<number>`count(*) filter (where ${pharmacyTradeCustomers.outstandingPkr} > 0)::int`,
-      })
-      .from(pharmacyTradeCustomers)
-      .where(eq(pharmacyTradeCustomers.organizationId, organizationId));
+    const colOrg = eq(pharmacyCollections.organizationId, organizationId);
+    const colWhere = branch ? and(colOrg, eq(pharmacyCollections.branchId, branch.id)) : colOrg;
 
-    const [expiryAgg] = await this.db
-      .select({ nearExpiryBatches: sql<number>`count(*)::int` })
-      .from(pharmacyMedicineBatches)
-      .innerJoin(pharmacyMedicines, eq(pharmacyMedicineBatches.medicineId, pharmacyMedicines.id))
-      .where(
-        and(
-          eq(pharmacyMedicines.organizationId, organizationId),
-          gte(pharmacyMedicineBatches.quantity, 1),
-          lte(pharmacyMedicineBatches.expiryDate, expiryTo),
-        ),
-      );
+    const retOrg = eq(pharmacyWholesaleReturns.organizationId, organizationId);
+    const retWhere = branch ? and(retOrg, eq(pharmacyWholesaleReturns.branchId, branch.id)) : retOrg;
 
-    const [visitAgg] = await this.db
-      .select({
-        visitsToday: sql<number>`count(*) filter (where ${pharmacyVisits.visitedAt} >= ${todayStart})::int`,
-      })
-      .from(pharmacyVisits)
-      .where(eq(pharmacyVisits.organizationId, organizationId));
+    const poOrg = eq(pharmacyPurchaseOrders.organizationId, organizationId);
+    const poWhere = branch ? and(poOrg, eq(pharmacyPurchaseOrders.branchId, branch.id)) : poOrg;
 
-    const assignmentConds = [eq(pharmacyAssignments.organizationId, organizationId)];
-    if (branch) assignmentConds.push(eq(pharmacyAssignments.branchId, branch.id));
-    const [assignAgg] = await this.db
-      .select({ assignmentsOpen: sql<number>`count(*)::int` })
-      .from(pharmacyAssignments)
-      .where(and(...assignmentConds));
+    const grnOrg = eq(pharmacyGrns.organizationId, organizationId);
+    const grnWhere = branch ? and(grnOrg, eq(pharmacyGrns.branchId, branch.id)) : grnOrg;
+
+    const medOrg = eq(pharmacyMedicines.organizationId, organizationId);
+    const medWhere = branch ? and(medOrg, eq(pharmacyMedicines.branchId, branch.id)) : medOrg;
+
+    const [
+      orderAgg,
+      invoiceAgg,
+      deliveryAgg,
+      collectionAgg,
+      returnAgg,
+      custAgg,
+      expiryAgg,
+      stockAgg,
+      visitAgg,
+      assignAgg,
+      poAgg,
+      purchaseTodayAgg,
+      gpAgg,
+    ] = await Promise.all([
+      this.db
+        .select({
+          ordersToday: sql<number>`count(*) filter (where ${pharmacyDistOrders.createdAt} >= ${todayStart})::int`,
+          salesTodayPkr: sql<number>`coalesce(sum(${pharmacyDistOrders.totalPkr}) filter (where ${pharmacyDistOrders.createdAt} >= ${todayStart} and ${pharmacyDistOrders.status} not in ('cancelled','draft')), 0)::int`,
+          salesYesterdayPkr: sql<number>`coalesce(sum(${pharmacyDistOrders.totalPkr}) filter (where ${pharmacyDistOrders.createdAt} >= ${yesterdayStart} and ${pharmacyDistOrders.createdAt} < ${todayStart} and ${pharmacyDistOrders.status} not in ('cancelled','draft')), 0)::int`,
+          salesMonthPkr: sql<number>`coalesce(sum(${pharmacyDistOrders.totalPkr}) filter (where ${pharmacyDistOrders.createdAt} >= ${monthStart} and ${pharmacyDistOrders.status} not in ('cancelled','draft')), 0)::int`,
+          salesLastMonthPkr: sql<number>`coalesce(sum(${pharmacyDistOrders.totalPkr}) filter (where ${pharmacyDistOrders.createdAt} >= ${lastMonthStart} and ${pharmacyDistOrders.createdAt} <= ${lastMonthEnd} and ${pharmacyDistOrders.status} not in ('cancelled','draft')), 0)::int`,
+          pendingApproval: sql<number>`count(*) filter (where ${pharmacyDistOrders.status} in ('booked','submitted'))::int`,
+          heldOrders: sql<number>`count(*) filter (where ${pharmacyDistOrders.status} = 'draft')::int`,
+          pendingOrders: sql<number>`count(*) filter (where ${pharmacyDistOrders.status} in ('draft','booked','submitted','approved','stock_reserved','picking','packed','ready_for_dispatch'))::int`,
+          inWarehousePipeline: sql<number>`count(*) filter (where ${pharmacyDistOrders.status} in ('approved','stock_reserved','picking','packed','ready_for_dispatch'))::int`,
+          creditOverridesToday: sql<number>`count(*) filter (where ${pharmacyDistOrders.creditOverride} = true and ${pharmacyDistOrders.createdAt} >= ${todayStart})::int`,
+        })
+        .from(pharmacyDistOrders)
+        .where(orderWhere)
+        .then((r) => r[0]),
+
+      this.db
+        .select({
+          invoicesToday: sql<number>`count(*) filter (where ${pharmacyDistInvoices.createdAt} >= ${todayStart})::int`,
+          grossSalesTodayPkr: sql<number>`coalesce(sum(${pharmacyDistInvoices.totalPkr}) filter (where ${pharmacyDistInvoices.createdAt} >= ${todayStart}), 0)::int`,
+          cashSalesTodayPkr: sql<number>`coalesce(sum(${pharmacyDistInvoices.totalPkr}) filter (where ${pharmacyDistInvoices.createdAt} >= ${todayStart} and lower(${pharmacyDistInvoices.paymentMethod}) in ('cash','cod')), 0)::int`,
+          creditSalesTodayPkr: sql<number>`coalesce(sum(${pharmacyDistInvoices.totalPkr}) filter (where ${pharmacyDistInvoices.createdAt} >= ${todayStart} and lower(${pharmacyDistInvoices.paymentMethod}) not in ('cash','cod')), 0)::int`,
+          amountDueOpenPkr: sql<number>`coalesce(sum(${pharmacyDistInvoices.amountDuePkr}) filter (where ${pharmacyDistInvoices.amountDuePkr} > 0), 0)::int`,
+          openDueInvoices: sql<number>`count(*) filter (where ${pharmacyDistInvoices.amountDuePkr} > 0)::int`,
+        })
+        .from(pharmacyDistInvoices)
+        .where(invWhere)
+        .then((r) => r[0]),
+
+      this.db
+        .select({
+          pendingDeliveries: sql<number>`count(*) filter (where ${pharmacyDeliveries.status} not in ('delivered','cancelled'))::int`,
+        })
+        .from(pharmacyDeliveries)
+        .where(delWhere)
+        .then((r) => r[0]),
+
+      this.db
+        .select({
+          collectionsTodayPkr: sql<number>`coalesce(sum(${pharmacyCollections.amountPkr}) filter (where ${pharmacyCollections.createdAt} >= ${todayStart}), 0)::int`,
+          collectionsTodayCount: sql<number>`count(*) filter (where ${pharmacyCollections.createdAt} >= ${todayStart})::int`,
+        })
+        .from(pharmacyCollections)
+        .where(colWhere)
+        .then((r) => r[0]),
+
+      this.db
+        .select({
+          returnsTodayPkr: sql<number>`coalesce(sum(${pharmacyWholesaleReturns.totalPkr}) filter (where ${pharmacyWholesaleReturns.createdAt} >= ${todayStart}), 0)::int`,
+          returnsTodayCount: sql<number>`count(*) filter (where ${pharmacyWholesaleReturns.createdAt} >= ${todayStart})::int`,
+        })
+        .from(pharmacyWholesaleReturns)
+        .where(retWhere)
+        .then((r) => r[0]),
+
+      this.db
+        .select({
+          outstandingPkr: sql<number>`coalesce(sum(${pharmacyTradeCustomers.outstandingPkr}), 0)::int`,
+          overdueAccounts: sql<number>`count(*) filter (where ${pharmacyTradeCustomers.outstandingPkr} > 0)::int`,
+          creditExceeded: sql<number>`count(*) filter (where ${pharmacyTradeCustomers.creditLimitPkr} > 0 and ${pharmacyTradeCustomers.outstandingPkr} > ${pharmacyTradeCustomers.creditLimitPkr})::int`,
+        })
+        .from(pharmacyTradeCustomers)
+        .where(eq(pharmacyTradeCustomers.organizationId, organizationId))
+        .then((r) => r[0]),
+
+      this.db
+        .select({
+          expiredBatches: sql<number>`count(*) filter (where ${pharmacyMedicineBatches.expiryDate} < ${todayStr} and ${pharmacyMedicineBatches.quantity} >= 1)::int`,
+          nearExpiry7: sql<number>`count(*) filter (where ${pharmacyMedicineBatches.expiryDate} >= ${todayStr} and ${pharmacyMedicineBatches.expiryDate} <= ${expiry7} and ${pharmacyMedicineBatches.quantity} >= 1)::int`,
+          nearExpiry30: sql<number>`count(*) filter (where ${pharmacyMedicineBatches.expiryDate} > ${expiry7} and ${pharmacyMedicineBatches.expiryDate} <= ${expiry30} and ${pharmacyMedicineBatches.quantity} >= 1)::int`,
+          nearExpiryValuePkr: sql<number>`coalesce(sum((${pharmacyMedicineBatches.quantity}) * (${pharmacyMedicineBatches.purchaseRatePkr})) filter (where ${pharmacyMedicineBatches.expiryDate} <= ${expiry30} and ${pharmacyMedicineBatches.quantity} >= 1), 0)::int`,
+        })
+        .from(pharmacyMedicineBatches)
+        .innerJoin(pharmacyMedicines, eq(pharmacyMedicineBatches.medicineId, pharmacyMedicines.id))
+        .where(medWhere)
+        .then((r) => r[0]),
+
+      this.db
+        .select({
+          lowStockSkus: sql<number>`count(*) filter (where ${pharmacyMedicines.status} = 'active' and ${pharmacyMedicines.currentStock} <= ${pharmacyMedicines.reorderLevel})::int`,
+          stockValuePkr: sql<number>`coalesce(sum(${pharmacyMedicines.currentStock} * ${pharmacyMedicines.costPricePkr}), 0)::int`,
+        })
+        .from(pharmacyMedicines)
+        .where(medWhere)
+        .then((r) => r[0]),
+
+      this.db
+        .select({
+          visitsToday: sql<number>`count(*) filter (where ${pharmacyVisits.visitedAt} >= ${todayStart})::int`,
+        })
+        .from(pharmacyVisits)
+        .where(eq(pharmacyVisits.organizationId, organizationId))
+        .then((r) => r[0]),
+
+      this.db
+        .select({ assignmentsOpen: sql<number>`count(*) filter (where ${pharmacyAssignments.status} in ('assigned','in_progress'))::int` })
+        .from(pharmacyAssignments)
+        .where(
+          branch
+            ? and(eq(pharmacyAssignments.organizationId, organizationId), eq(pharmacyAssignments.branchId, branch.id))
+            : eq(pharmacyAssignments.organizationId, organizationId),
+        )
+        .then((r) => r[0]),
+
+      this.db
+        .select({
+          pendingPurchaseOrders: sql<number>`count(*) filter (where ${pharmacyPurchaseOrders.status} in ('draft','approved'))::int`,
+        })
+        .from(pharmacyPurchaseOrders)
+        .where(poWhere)
+        .then((r) => r[0]),
+
+      this.db
+        .select({
+          purchaseTodayPkr: sql<number>`coalesce(sum(${pharmacyGrns.totalPkr}) filter (where ${pharmacyGrns.createdAt} >= ${todayStart}), 0)::int`,
+        })
+        .from(pharmacyGrns)
+        .where(grnWhere)
+        .then((r) => r[0]),
+
+      this.db
+        .select({
+          grossProfitTodayPkr: sql<number>`coalesce(sum(
+            ${pharmacyDistInvoiceLines.lineTotalPkr} - (${pharmacyDistInvoiceLines.quantity} * coalesce(${pharmacyMedicineBatches.purchaseRatePkr}, ${pharmacyMedicines.costPricePkr}, 0))
+          ), 0)::int`,
+        })
+        .from(pharmacyDistInvoiceLines)
+        .innerJoin(pharmacyDistInvoices, eq(pharmacyDistInvoiceLines.invoiceId, pharmacyDistInvoices.id))
+        .innerJoin(pharmacyMedicines, eq(pharmacyDistInvoiceLines.medicineId, pharmacyMedicines.id))
+        .leftJoin(pharmacyMedicineBatches, eq(pharmacyDistInvoiceLines.batchId, pharmacyMedicineBatches.id))
+        .where(and(invWhere, gte(pharmacyDistInvoices.createdAt, todayStart)))
+        .then((r) => r[0]),
+    ]);
+
+    const grossSales = invoiceAgg?.grossSalesTodayPkr ?? 0;
+    const returnsToday = returnAgg?.returnsTodayPkr ?? 0;
+    const netSalesTodayPkr = Math.max(0, grossSales - returnsToday);
+    const salesTodayFallback = orderAgg?.salesTodayPkr ?? 0;
+    const salesTodayPkr = grossSales > 0 ? grossSales : salesTodayFallback;
+
+    const actions: {
+      id: string;
+      severity: "danger" | "warning" | "info";
+      label: string;
+      count: number;
+      href: string;
+    }[] = [];
+
+    const pushAction = (
+      id: string,
+      severity: "danger" | "warning" | "info",
+      label: string,
+      count: number,
+      href: string,
+    ) => {
+      if (count > 0) actions.push({ id, severity, label, count, href });
+    };
+
+    pushAction(
+      "pending-approval",
+      "warning",
+      "Orders pending approval",
+      orderAgg?.pendingApproval ?? 0,
+      "/pops/distribution/orders?focus=pendingApproval",
+    );
+    pushAction(
+      "credit-override",
+      "warning",
+      "Credit overrides today",
+      orderAgg?.creditOverridesToday ?? 0,
+      "/pops/distribution/orders?focus=creditOverride",
+    );
+    pushAction(
+      "low-stock",
+      "warning",
+      "Low stock SKUs",
+      stockAgg?.lowStockSkus ?? 0,
+      "/pops/distribution/inventory?focus=lowStock",
+    );
+    pushAction(
+      "near-expiry",
+      "warning",
+      "Near expiry (30d)",
+      (expiryAgg?.nearExpiry7 ?? 0) + (expiryAgg?.nearExpiry30 ?? 0),
+      "/pops/distribution/expiry?focus=near",
+    );
+    pushAction(
+      "expired",
+      "danger",
+      "Expired stock batches",
+      expiryAgg?.expiredBatches ?? 0,
+      "/pops/distribution/expiry?focus=expired",
+    );
+    pushAction(
+      "overdue",
+      "danger",
+      "Customers with outstanding",
+      custAgg?.overdueAccounts ?? 0,
+      "/pops/distribution/aging?focus=overdue",
+    );
+    pushAction(
+      "credit-exceeded",
+      "danger",
+      "Credit limit exceeded",
+      custAgg?.creditExceeded ?? 0,
+      "/pops/distribution/aging?focus=creditExceeded",
+    );
+    pushAction(
+      "pending-delivery",
+      "info",
+      "Pending deliveries",
+      deliveryAgg?.pendingDeliveries ?? 0,
+      "/pops/distribution/deliveries?focus=pending",
+    );
+    pushAction(
+      "pending-collection",
+      "info",
+      "Invoices with open dues",
+      invoiceAgg?.openDueInvoices ?? 0,
+      "/pops/distribution/collections",
+    );
+    pushAction(
+      "pending-po",
+      "info",
+      "Pending purchase orders",
+      poAgg?.pendingPurchaseOrders ?? 0,
+      "/pops/distribution/purchase-orders?focus=pending",
+    );
 
     return {
+      generatedAt: new Date().toISOString(),
+      today: {
+        ordersToday: orderAgg?.ordersToday ?? 0,
+        salesTodayPkr,
+        netSalesTodayPkr: grossSales > 0 ? netSalesTodayPkr : salesTodayPkr,
+        cashSalesTodayPkr: invoiceAgg?.cashSalesTodayPkr ?? 0,
+        creditSalesTodayPkr: invoiceAgg?.creditSalesTodayPkr ?? (salesTodayPkr > 0 ? salesTodayPkr : 0),
+        returnsTodayPkr: returnsToday,
+        returnsTodayCount: returnAgg?.returnsTodayCount ?? 0,
+        collectionsTodayPkr: collectionAgg?.collectionsTodayPkr ?? 0,
+        collectionsTodayCount: collectionAgg?.collectionsTodayCount ?? 0,
+        outstandingPkr: custAgg?.outstandingPkr ?? 0,
+        purchaseTodayPkr: purchaseTodayAgg?.purchaseTodayPkr ?? 0,
+        grossProfitTodayPkr: gpAgg?.grossProfitTodayPkr ?? 0,
+        lowStockSkus: stockAgg?.lowStockSkus ?? 0,
+        nearExpiryBatches: (expiryAgg?.nearExpiry7 ?? 0) + (expiryAgg?.nearExpiry30 ?? 0),
+        expiredBatches: expiryAgg?.expiredBatches ?? 0,
+        pendingDeliveries: deliveryAgg?.pendingDeliveries ?? 0,
+        pendingOrders: orderAgg?.pendingOrders ?? 0,
+        heldOrders: orderAgg?.heldOrders ?? 0,
+        invoicesToday: invoiceAgg?.invoicesToday ?? 0,
+      },
+      comparisons: {
+        salesYesterdayPkr: orderAgg?.salesYesterdayPkr ?? 0,
+        salesMonthPkr: orderAgg?.salesMonthPkr ?? 0,
+        salesLastMonthPkr: orderAgg?.salesLastMonthPkr ?? 0,
+      },
+      stock: {
+        nearExpiryBatches: (expiryAgg?.nearExpiry7 ?? 0) + (expiryAgg?.nearExpiry30 ?? 0),
+        nearExpiry7: expiryAgg?.nearExpiry7 ?? 0,
+        nearExpiry30: expiryAgg?.nearExpiry30 ?? 0,
+        expiredBatches: expiryAgg?.expiredBatches ?? 0,
+        nearExpiryValuePkr: expiryAgg?.nearExpiryValuePkr ?? 0,
+        lowStockSkus: stockAgg?.lowStockSkus ?? 0,
+        stockValuePkr: stockAgg?.stockValuePkr ?? 0,
+      },
       sales: {
         ordersToday: orderAgg?.ordersToday ?? 0,
-        salesTodayPkr: orderAgg?.salesTodayPkr ?? 0,
+        salesTodayPkr,
         pendingApproval: orderAgg?.pendingApproval ?? 0,
         inWarehousePipeline: orderAgg?.inWarehousePipeline ?? 0,
+        heldOrders: orderAgg?.heldOrders ?? 0,
+        creditOverridesToday: orderAgg?.creditOverridesToday ?? 0,
       },
-      stock: { nearExpiryBatches: expiryAgg?.nearExpiryBatches ?? 0 },
       distribution: {
         pendingDeliveries: deliveryAgg?.pendingDeliveries ?? 0,
         outstandingPkr: custAgg?.outstandingPkr ?? 0,
         overdueAccounts: custAgg?.overdueAccounts ?? 0,
+        creditExceeded: custAgg?.creditExceeded ?? 0,
+        pendingPurchaseOrders: poAgg?.pendingPurchaseOrders ?? 0,
       },
       field: {
         visitsToday: visitAgg?.visitsToday ?? 0,
         assignmentsOpen: assignAgg?.assignmentsOpen ?? 0,
+      },
+      actions,
+    };
+  }
+
+  /** Lazy management widgets for PS Window (tops, aging, performance). */
+  async getDistributionPsWidgets(organizationId: string, branchCode?: string) {
+    const branch = branchCode?.trim()
+      ? await this.resolveBranch(organizationId, branchCode.trim())
+      : null;
+
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const d30 = new Date(todayStart);
+    d30.setDate(d30.getDate() - 30);
+    const d60 = new Date(todayStart);
+    d60.setDate(d60.getDate() - 60);
+    const d90 = new Date(todayStart);
+    d90.setDate(d90.getDate() - 90);
+    const d120 = new Date(todayStart);
+    d120.setDate(d120.getDate() - 120);
+
+    const invOrg = eq(pharmacyDistInvoices.organizationId, organizationId);
+    const invWhere = branch ? and(invOrg, eq(pharmacyDistInvoices.branchId, branch.id)) : invOrg;
+    const orderOrg = eq(pharmacyDistOrders.organizationId, organizationId);
+    const orderWhere = branch ? and(orderOrg, eq(pharmacyDistOrders.branchId, branch.id)) : orderOrg;
+    const colOrg = eq(pharmacyCollections.organizationId, organizationId);
+    const colWhere = branch ? and(colOrg, eq(pharmacyCollections.branchId, branch.id)) : colOrg;
+
+    const monthInvWhere = and(invWhere, gte(pharmacyDistInvoices.createdAt, monthStart));
+
+    const [topMedicines, topCustomers, topCompanies, salesmanPerf, routePerf, recoveryPerf, agingAgg] =
+      await Promise.all([
+        this.db
+          .select({
+            medicineId: pharmacyDistInvoiceLines.medicineId,
+            name: pharmacyMedicines.name,
+            sku: pharmacyMedicines.sku,
+            qty: sql<number>`coalesce(sum(${pharmacyDistInvoiceLines.quantity}), 0)::int`,
+            amountPkr: sql<number>`coalesce(sum(${pharmacyDistInvoiceLines.lineTotalPkr}), 0)::int`,
+          })
+          .from(pharmacyDistInvoiceLines)
+          .innerJoin(pharmacyDistInvoices, eq(pharmacyDistInvoiceLines.invoiceId, pharmacyDistInvoices.id))
+          .innerJoin(pharmacyMedicines, eq(pharmacyDistInvoiceLines.medicineId, pharmacyMedicines.id))
+          .where(monthInvWhere)
+          .groupBy(pharmacyDistInvoiceLines.medicineId, pharmacyMedicines.name, pharmacyMedicines.sku)
+          .orderBy(sql`sum(${pharmacyDistInvoiceLines.lineTotalPkr}) desc`)
+          .limit(8),
+
+        this.db
+          .select({
+            tradeCustomerId: pharmacyDistInvoices.tradeCustomerId,
+            name: pharmacyTradeCustomers.name,
+            code: pharmacyTradeCustomers.code,
+            amountPkr: sql<number>`coalesce(sum(${pharmacyDistInvoices.totalPkr}), 0)::int`,
+            invoices: sql<number>`count(*)::int`,
+          })
+          .from(pharmacyDistInvoices)
+          .innerJoin(
+            pharmacyTradeCustomers,
+            eq(pharmacyDistInvoices.tradeCustomerId, pharmacyTradeCustomers.id),
+          )
+          .where(monthInvWhere)
+          .groupBy(
+            pharmacyDistInvoices.tradeCustomerId,
+            pharmacyTradeCustomers.name,
+            pharmacyTradeCustomers.code,
+          )
+          .orderBy(sql`sum(${pharmacyDistInvoices.totalPkr}) desc`)
+          .limit(8),
+
+        this.db
+          .select({
+            companyId: pharmacyCompanies.id,
+            name: pharmacyCompanies.name,
+            code: pharmacyCompanies.code,
+            amountPkr: sql<number>`coalesce(sum(${pharmacyDistInvoiceLines.lineTotalPkr}), 0)::int`,
+          })
+          .from(pharmacyDistInvoiceLines)
+          .innerJoin(pharmacyDistInvoices, eq(pharmacyDistInvoiceLines.invoiceId, pharmacyDistInvoices.id))
+          .innerJoin(pharmacyMedicines, eq(pharmacyDistInvoiceLines.medicineId, pharmacyMedicines.id))
+          .innerJoin(pharmacyCompanies, eq(pharmacyMedicines.companyId, pharmacyCompanies.id))
+          .where(monthInvWhere)
+          .groupBy(pharmacyCompanies.id, pharmacyCompanies.name, pharmacyCompanies.code)
+          .orderBy(sql`sum(${pharmacyDistInvoiceLines.lineTotalPkr}) desc`)
+          .limit(8),
+
+        this.db
+          .select({
+            employeeId: pharmacyDistOrders.salesmanEmployeeId,
+            name: popsEmployees.displayName,
+            amountPkr: sql<number>`coalesce(sum(${pharmacyDistOrders.totalPkr}), 0)::int`,
+            orders: sql<number>`count(*)::int`,
+          })
+          .from(pharmacyDistOrders)
+          .innerJoin(popsEmployees, eq(pharmacyDistOrders.salesmanEmployeeId, popsEmployees.id))
+          .where(
+            and(
+              orderWhere,
+              gte(pharmacyDistOrders.createdAt, monthStart),
+              sql`${pharmacyDistOrders.salesmanEmployeeId} is not null`,
+              sql`${pharmacyDistOrders.status} not in ('cancelled','draft')`,
+            ),
+          )
+          .groupBy(pharmacyDistOrders.salesmanEmployeeId, popsEmployees.displayName)
+          .orderBy(sql`sum(${pharmacyDistOrders.totalPkr}) desc`)
+          .limit(8),
+
+        this.db
+          .select({
+            routeId: pharmacyDeliveries.routeId,
+            name: pharmacyRoutes.name,
+            code: pharmacyRoutes.code,
+            deliveries: sql<number>`count(*)::int`,
+            delivered: sql<number>`count(*) filter (where ${pharmacyDeliveries.status} = 'delivered')::int`,
+            collectedPkr: sql<number>`coalesce(sum(${pharmacyDeliveries.collectedPkr}), 0)::int`,
+          })
+          .from(pharmacyDeliveries)
+          .leftJoin(pharmacyRoutes, eq(pharmacyDeliveries.routeId, pharmacyRoutes.id))
+          .where(
+            and(
+              branch
+                ? and(eq(pharmacyDeliveries.organizationId, organizationId), eq(pharmacyDeliveries.branchId, branch.id))
+                : eq(pharmacyDeliveries.organizationId, organizationId),
+              gte(pharmacyDeliveries.createdAt, monthStart),
+              sql`${pharmacyDeliveries.routeId} is not null`,
+            ),
+          )
+          .groupBy(pharmacyDeliveries.routeId, pharmacyRoutes.name, pharmacyRoutes.code)
+          .orderBy(sql`count(*) desc`)
+          .limit(8),
+
+        this.db
+          .select({
+            employeeId: pharmacyCollections.salesmanEmployeeId,
+            name: popsEmployees.displayName,
+            amountPkr: sql<number>`coalesce(sum(${pharmacyCollections.amountPkr}), 0)::int`,
+            receipts: sql<number>`count(*)::int`,
+          })
+          .from(pharmacyCollections)
+          .innerJoin(popsEmployees, eq(pharmacyCollections.salesmanEmployeeId, popsEmployees.id))
+          .where(
+            and(
+              colWhere,
+              gte(pharmacyCollections.createdAt, monthStart),
+              sql`${pharmacyCollections.salesmanEmployeeId} is not null`,
+            ),
+          )
+          .groupBy(pharmacyCollections.salesmanEmployeeId, popsEmployees.displayName)
+          .orderBy(sql`sum(${pharmacyCollections.amountPkr}) desc`)
+          .limit(8),
+
+        this.db
+          .select({
+            currentPkr: sql<number>`coalesce(sum(${pharmacyDistInvoices.amountDuePkr}) filter (where ${pharmacyDistInvoices.invoiceDate}::date >= ${d30.toISOString().slice(0, 10)}), 0)::int`,
+            d31to60Pkr: sql<number>`coalesce(sum(${pharmacyDistInvoices.amountDuePkr}) filter (where ${pharmacyDistInvoices.invoiceDate}::date < ${d30.toISOString().slice(0, 10)} and ${pharmacyDistInvoices.invoiceDate}::date >= ${d60.toISOString().slice(0, 10)}), 0)::int`,
+            d61to90Pkr: sql<number>`coalesce(sum(${pharmacyDistInvoices.amountDuePkr}) filter (where ${pharmacyDistInvoices.invoiceDate}::date < ${d60.toISOString().slice(0, 10)} and ${pharmacyDistInvoices.invoiceDate}::date >= ${d90.toISOString().slice(0, 10)}), 0)::int`,
+            d91to120Pkr: sql<number>`coalesce(sum(${pharmacyDistInvoices.amountDuePkr}) filter (where ${pharmacyDistInvoices.invoiceDate}::date < ${d90.toISOString().slice(0, 10)} and ${pharmacyDistInvoices.invoiceDate}::date >= ${d120.toISOString().slice(0, 10)}), 0)::int`,
+            d120plusPkr: sql<number>`coalesce(sum(${pharmacyDistInvoices.amountDuePkr}) filter (where ${pharmacyDistInvoices.invoiceDate}::date < ${d120.toISOString().slice(0, 10)}), 0)::int`,
+          })
+          .from(pharmacyDistInvoices)
+          .where(and(invWhere, sql`${pharmacyDistInvoices.amountDuePkr} > 0`))
+          .then((r) => r[0]),
+      ]);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      topMedicines,
+      topCustomers,
+      topCompanies,
+      salesmanPerformance: salesmanPerf,
+      routePerformance: routePerf,
+      recoveryPerformance: recoveryPerf,
+      aging: {
+        currentPkr: agingAgg?.currentPkr ?? 0,
+        d31to60Pkr: agingAgg?.d31to60Pkr ?? 0,
+        d61to90Pkr: agingAgg?.d61to90Pkr ?? 0,
+        d91to120Pkr: agingAgg?.d91to120Pkr ?? 0,
+        d120plusPkr: agingAgg?.d120plusPkr ?? 0,
       },
     };
   }

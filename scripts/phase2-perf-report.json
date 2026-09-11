@@ -1,0 +1,136 @@
+{
+  "measuredAt": "2026-09-11T09:16:51.199Z",
+  "api": "https://backend-system-production-28a3.up.railway.app",
+  "branch": "DIST-HQ",
+  "runs": 3,
+  "security": {
+    "unauthorizedWithoutToken": false,
+    "status": 404
+  },
+  "badWarehouseRejected": true,
+  "parallelAllWidgetsMs": 1526,
+  "requestCountOnMount": 11,
+  "endpoints": [
+    {
+      "endpoint": "/v1/pharmacy/distribution/dashboard/summary",
+      "ok": false,
+      "error": "HTTP 404",
+      "runs": 3,
+      "avgMs": 291,
+      "minMs": 279,
+      "maxMs": 300,
+      "responseBytes": 137,
+      "hasGeneratedAt": false
+    },
+    {
+      "endpoint": "/v1/pharmacy/distribution/dashboard/sales-trend",
+      "ok": false,
+      "error": "HTTP 404",
+      "runs": 3,
+      "avgMs": 392,
+      "minMs": 280,
+      "maxMs": 472,
+      "responseBytes": 142,
+      "hasGeneratedAt": false
+    },
+    {
+      "endpoint": "/v1/pharmacy/distribution/dashboard/top-products",
+      "ok": false,
+      "error": "HTTP 404",
+      "runs": 3,
+      "avgMs": 281,
+      "minMs": 275,
+      "maxMs": 292,
+      "responseBytes": 142,
+      "hasGeneratedAt": false
+    },
+    {
+      "endpoint": "/v1/pharmacy/distribution/dashboard/top-customers",
+      "ok": false,
+      "error": "HTTP 404",
+      "runs": 3,
+      "avgMs": 285,
+      "minMs": 278,
+      "maxMs": 299,
+      "responseBytes": 143,
+      "hasGeneratedAt": false
+    },
+    {
+      "endpoint": "/v1/pharmacy/distribution/dashboard/company-performance",
+      "ok": false,
+      "error": "HTTP 404",
+      "runs": 3,
+      "avgMs": 289,
+      "minMs": 274,
+      "maxMs": 308,
+      "responseBytes": 149,
+      "hasGeneratedAt": false
+    },
+    {
+      "endpoint": "/v1/pharmacy/distribution/dashboard/salesmen",
+      "ok": false,
+      "error": "HTTP 404",
+      "runs": 3,
+      "avgMs": 278,
+      "minMs": 273,
+      "maxMs": 286,
+      "responseBytes": 138,
+      "hasGeneratedAt": false
+    },
+    {
+      "endpoint": "/v1/pharmacy/distribution/dashboard/action-center",
+      "ok": false,
+      "error": "HTTP 404",
+      "runs": 3,
+      "avgMs": 286,
+      "minMs": 280,
+      "maxMs": 293,
+      "responseBytes": 143,
+      "hasGeneratedAt": false
+    },
+    {
+      "endpoint": "/v1/pharmacy/distribution/dashboard/stock-health",
+      "ok": false,
+      "error": "HTTP 404",
+      "runs": 3,
+      "avgMs": 290,
+      "minMs": 279,
+      "maxMs": 309,
+      "responseBytes": 142,
+      "hasGeneratedAt": false
+    },
+    {
+      "endpoint": "/v1/pharmacy/distribution/dashboard/recovery",
+      "ok": false,
+      "error": "HTTP 404",
+      "runs": 3,
+      "avgMs": 344,
+      "minMs": 289,
+      "maxMs": 398,
+      "responseBytes": 138,
+      "hasGeneratedAt": false
+    },
+    {
+      "endpoint": "/v1/pharmacy/distribution/dashboard/deliveries",
+      "ok": false,
+      "error": "HTTP 404",
+      "runs": 3,
+      "avgMs": 310,
+      "minMs": 277,
+      "maxMs": 361,
+      "responseBytes": 140,
+      "hasGeneratedAt": false
+    },
+    {
+      "endpoint": "/v1/pharmacy/distribution/dashboard/field-force",
+      "ok": false,
+      "error": "HTTP 404",
+      "runs": 3,
+      "avgMs": 292,
+      "minMs": 289,
+      "maxMs": 298,
+      "responseBytes": 141,
+      "hasGeneratedAt": false
+    }
+  ]
+}

@@ -17,13 +17,19 @@ import { PermissionsGuard } from "../users/permissions.guard";
 import { RequirePermissions } from "../users/require-permission.decorator";
 import { SystemTypeGuard } from "../users/system-type.guard";
 import { RequireSystemType } from "../users/require-system-type.decorator";
+import { PharmacyDashboardService } from "./pharmacy-dashboard.service";
 import { PharmacyErpService } from "./pharmacy-erp.service";
+import { PharmacyMastersService } from "./pharmacy-masters.service";
 
 @Controller("v1/pharmacy")
 @UseGuards(JwtAuthGuard, PermissionsGuard, SystemTypeGuard)
 @RequireSystemType("pharmacy", "distribution")
 export class PharmacyErpController {
-  constructor(private readonly erp: PharmacyErpService) {}
+  constructor(
+    private readonly erp: PharmacyErpService,
+    private readonly dashboard: PharmacyDashboardService,
+    private readonly masters: PharmacyMastersService,
+  ) {}
 
   @Get("lookup")
   @RequirePermissions("pharmacy.view", "pops.read")
@@ -43,7 +49,21 @@ export class PharmacyErpController {
 
   @Get("companies")
   @RequirePermissions("distribution.masters", "pharmacy.view", "pops.read")
-  listCompanies(@CurrentUser() user: AccessJwtPayload) {
+  listCompanies(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("q") q?: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
+    @Query("status") status?: string,
+  ) {
+    if (page || pageSize || q || status) {
+      return this.masters.listCompaniesPaged(user.organizationId, {
+        q,
+        status,
+        page: page ? Number(page) : undefined,
+        pageSize: pageSize ? Number(pageSize) : undefined,
+      });
+    }
     return this.erp.listCompanies(user.organizationId);
   }
 
@@ -53,9 +73,41 @@ export class PharmacyErpController {
     return this.erp.createCompany(user.organizationId, createPharmacyCompanySchema.parse(body));
   }
 
+  @Patch("companies/:id")
+  @RequirePermissions("distribution.masters", "pharmacy.inventory.manage", "pops.inventory.manage")
+  updateCompany(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string, @Body() body: unknown) {
+    return this.masters.updateCompany(user.organizationId, id, body as Record<string, unknown>, user.sub);
+  }
+
+  @Post("companies/:id/status")
+  @RequirePermissions("distribution.masters", "pharmacy.inventory.manage", "pops.inventory.manage")
+  setCompanyStatus(
+    @CurrentUser() user: AccessJwtPayload,
+    @Param("id") id: string,
+    @Body() body: { status: string },
+  ) {
+    return this.masters.setCompanyStatus(user.organizationId, id, body.status, user.sub);
+  }
+
   @Get("warehouses")
   @RequirePermissions("pharmacy.inventory.view", "pharmacy.view", "pops.read")
-  listWarehouses(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
+  listWarehouses(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode: string,
+    @Query("q") q?: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
+    @Query("status") status?: string,
+  ) {
+    if (page || pageSize || q || status) {
+      return this.masters.listWarehousesPaged(user.organizationId, {
+        branchCode: branchCode?.trim(),
+        q,
+        status,
+        page: page ? Number(page) : undefined,
+        pageSize: pageSize ? Number(pageSize) : undefined,
+      });
+    }
     return this.erp.listWarehouses(user.organizationId, branchCode?.trim() ?? "");
   }
 
@@ -63,6 +115,22 @@ export class PharmacyErpController {
   @RequirePermissions("pharmacy.inventory.manage", "pops.inventory.manage")
   createWarehouse(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
     return this.erp.createWarehouse(user.organizationId, createPharmacyWarehouseSchema.parse(body));
+  }
+
+  @Patch("warehouses/:id")
+  @RequirePermissions("pharmacy.inventory.manage", "pops.inventory.manage")
+  updateWarehouse(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string, @Body() body: unknown) {
+    return this.masters.updateWarehouse(user.organizationId, id, body as Record<string, unknown>, user.sub);
+  }
+
+  @Post("warehouses/:id/status")
+  @RequirePermissions("pharmacy.inventory.manage", "pops.inventory.manage")
+  setWarehouseStatus(
+    @CurrentUser() user: AccessJwtPayload,
+    @Param("id") id: string,
+    @Body() body: { status: string },
+  ) {
+    return this.masters.setWarehouseStatus(user.organizationId, id, body.status, user.sub);
   }
 
   @Get("territories")
@@ -198,7 +266,21 @@ export class PharmacyErpController {
 
   @Get("trade-customers")
   @RequirePermissions("distribution.masters", "pharmacy.view", "pops.read")
-  listTradeCustomers(@CurrentUser() user: AccessJwtPayload) {
+  listTradeCustomers(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("q") q?: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
+    @Query("status") status?: string,
+  ) {
+    if (page || pageSize || q || status) {
+      return this.masters.listTradeCustomersPaged(user.organizationId, {
+        q,
+        status,
+        page: page ? Number(page) : undefined,
+        pageSize: pageSize ? Number(pageSize) : undefined,
+      });
+    }
     return this.erp.listTradeCustomers(user.organizationId);
   }
 
@@ -212,6 +294,22 @@ export class PharmacyErpController {
   @RequirePermissions("distribution.masters", "pops.inventory.manage")
   createTradeCustomer(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
     return this.erp.createTradeCustomer(user.organizationId, createPharmacyTradeCustomerSchema.parse(body));
+  }
+
+  @Patch("trade-customers/:id")
+  @RequirePermissions("distribution.masters", "pharmacy.inventory.manage", "pops.inventory.manage")
+  updateTradeCustomer(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string, @Body() body: unknown) {
+    return this.masters.updateTradeCustomer(user.organizationId, id, body as Record<string, unknown>, user.sub);
+  }
+
+  @Post("trade-customers/:id/status")
+  @RequirePermissions("distribution.masters", "pharmacy.inventory.manage", "pops.inventory.manage")
+  setTradeCustomerStatus(
+    @CurrentUser() user: AccessJwtPayload,
+    @Param("id") id: string,
+    @Body() body: { status: string },
+  ) {
+    return this.masters.setTradeCustomerStatus(user.organizationId, id, body.status, user.sub);
   }
 
   @Get("employees-picker")
@@ -359,6 +457,390 @@ export class PharmacyErpController {
   @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
   psWindow(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode?: string) {
     return this.erp.getDistributionPsWindow(user.organizationId, branchCode?.trim());
+  }
+
+  @Get("distribution/ps-window/widgets")
+  @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
+  psWidgets(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode?: string) {
+    return this.erp.getDistributionPsWidgets(user.organizationId, branchCode?.trim());
+  }
+
+  private dashboardFilters(query: {
+    branchCode?: string;
+    warehouseId?: string;
+    companyId?: string;
+    salesmanId?: string;
+    territoryId?: string;
+    routeId?: string;
+    from?: string;
+    to?: string;
+    preset?: string;
+    limit?: string;
+  }) {
+    return {
+      branchCode: query.branchCode?.trim() || undefined,
+      warehouseId: query.warehouseId?.trim() || undefined,
+      companyId: query.companyId?.trim() || undefined,
+      salesmanId: query.salesmanId?.trim() || undefined,
+      territoryId: query.territoryId?.trim() || undefined,
+      routeId: query.routeId?.trim() || undefined,
+      from: query.from?.trim() || undefined,
+      to: query.to?.trim() || undefined,
+      preset: query.preset?.trim() || undefined,
+      limit: query.limit != null && query.limit !== "" ? Number(query.limit) : undefined,
+    };
+  }
+
+  @Get("distribution/dashboard/summary")
+  @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
+  dashboardSummary(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode?: string,
+    @Query("warehouseId") warehouseId?: string,
+    @Query("companyId") companyId?: string,
+    @Query("salesmanId") salesmanId?: string,
+    @Query("territoryId") territoryId?: string,
+    @Query("routeId") routeId?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("preset") preset?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.dashboard.summary(
+      user.organizationId,
+      this.dashboardFilters({
+        branchCode,
+        warehouseId,
+        companyId,
+        salesmanId,
+        territoryId,
+        routeId,
+        from,
+        to,
+        preset,
+        limit,
+      }),
+    );
+  }
+
+  @Get("distribution/dashboard/sales-trend")
+  @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
+  dashboardSalesTrend(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode?: string,
+    @Query("warehouseId") warehouseId?: string,
+    @Query("companyId") companyId?: string,
+    @Query("salesmanId") salesmanId?: string,
+    @Query("territoryId") territoryId?: string,
+    @Query("routeId") routeId?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("preset") preset?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.dashboard.salesTrend(
+      user.organizationId,
+      this.dashboardFilters({
+        branchCode,
+        warehouseId,
+        companyId,
+        salesmanId,
+        territoryId,
+        routeId,
+        from,
+        to,
+        preset,
+        limit,
+      }),
+    );
+  }
+
+  @Get("distribution/dashboard/top-products")
+  @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
+  dashboardTopProducts(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode?: string,
+    @Query("warehouseId") warehouseId?: string,
+    @Query("companyId") companyId?: string,
+    @Query("salesmanId") salesmanId?: string,
+    @Query("territoryId") territoryId?: string,
+    @Query("routeId") routeId?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("preset") preset?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.dashboard.topProducts(
+      user.organizationId,
+      this.dashboardFilters({
+        branchCode,
+        warehouseId,
+        companyId,
+        salesmanId,
+        territoryId,
+        routeId,
+        from,
+        to,
+        preset,
+        limit,
+      }),
+    );
+  }
+
+  @Get("distribution/dashboard/top-customers")
+  @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
+  dashboardTopCustomers(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode?: string,
+    @Query("warehouseId") warehouseId?: string,
+    @Query("companyId") companyId?: string,
+    @Query("salesmanId") salesmanId?: string,
+    @Query("territoryId") territoryId?: string,
+    @Query("routeId") routeId?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("preset") preset?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.dashboard.topCustomers(
+      user.organizationId,
+      this.dashboardFilters({
+        branchCode,
+        warehouseId,
+        companyId,
+        salesmanId,
+        territoryId,
+        routeId,
+        from,
+        to,
+        preset,
+        limit,
+      }),
+    );
+  }
+
+  @Get("distribution/dashboard/company-performance")
+  @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
+  dashboardCompanyPerformance(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode?: string,
+    @Query("warehouseId") warehouseId?: string,
+    @Query("companyId") companyId?: string,
+    @Query("salesmanId") salesmanId?: string,
+    @Query("territoryId") territoryId?: string,
+    @Query("routeId") routeId?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("preset") preset?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.dashboard.companyPerformance(
+      user.organizationId,
+      this.dashboardFilters({
+        branchCode,
+        warehouseId,
+        companyId,
+        salesmanId,
+        territoryId,
+        routeId,
+        from,
+        to,
+        preset,
+        limit,
+      }),
+    );
+  }
+
+  @Get("distribution/dashboard/salesmen")
+  @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
+  dashboardSalesmen(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode?: string,
+    @Query("warehouseId") warehouseId?: string,
+    @Query("companyId") companyId?: string,
+    @Query("salesmanId") salesmanId?: string,
+    @Query("territoryId") territoryId?: string,
+    @Query("routeId") routeId?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("preset") preset?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.dashboard.salesmen(
+      user.organizationId,
+      this.dashboardFilters({
+        branchCode,
+        warehouseId,
+        companyId,
+        salesmanId,
+        territoryId,
+        routeId,
+        from,
+        to,
+        preset,
+        limit,
+      }),
+    );
+  }
+
+  @Get("distribution/dashboard/action-center")
+  @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
+  dashboardActionCenter(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode?: string,
+    @Query("warehouseId") warehouseId?: string,
+    @Query("companyId") companyId?: string,
+    @Query("salesmanId") salesmanId?: string,
+    @Query("territoryId") territoryId?: string,
+    @Query("routeId") routeId?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("preset") preset?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.dashboard.actionCenter(
+      user.organizationId,
+      this.dashboardFilters({
+        branchCode,
+        warehouseId,
+        companyId,
+        salesmanId,
+        territoryId,
+        routeId,
+        from,
+        to,
+        preset,
+        limit,
+      }),
+    );
+  }
+
+  @Get("distribution/dashboard/stock-health")
+  @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
+  dashboardStockHealth(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode?: string,
+    @Query("warehouseId") warehouseId?: string,
+    @Query("companyId") companyId?: string,
+    @Query("salesmanId") salesmanId?: string,
+    @Query("territoryId") territoryId?: string,
+    @Query("routeId") routeId?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("preset") preset?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.dashboard.stockHealth(
+      user.organizationId,
+      this.dashboardFilters({
+        branchCode,
+        warehouseId,
+        companyId,
+        salesmanId,
+        territoryId,
+        routeId,
+        from,
+        to,
+        preset,
+        limit,
+      }),
+    );
+  }
+
+  @Get("distribution/dashboard/recovery")
+  @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
+  dashboardRecovery(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode?: string,
+    @Query("warehouseId") warehouseId?: string,
+    @Query("companyId") companyId?: string,
+    @Query("salesmanId") salesmanId?: string,
+    @Query("territoryId") territoryId?: string,
+    @Query("routeId") routeId?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("preset") preset?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.dashboard.recovery(
+      user.organizationId,
+      this.dashboardFilters({
+        branchCode,
+        warehouseId,
+        companyId,
+        salesmanId,
+        territoryId,
+        routeId,
+        from,
+        to,
+        preset,
+        limit,
+      }),
+    );
+  }
+
+  @Get("distribution/dashboard/deliveries")
+  @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
+  dashboardDeliveries(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode?: string,
+    @Query("warehouseId") warehouseId?: string,
+    @Query("companyId") companyId?: string,
+    @Query("salesmanId") salesmanId?: string,
+    @Query("territoryId") territoryId?: string,
+    @Query("routeId") routeId?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("preset") preset?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.dashboard.deliveries(
+      user.organizationId,
+      this.dashboardFilters({
+        branchCode,
+        warehouseId,
+        companyId,
+        salesmanId,
+        territoryId,
+        routeId,
+        from,
+        to,
+        preset,
+        limit,
+      }),
+    );
+  }
+
+  @Get("distribution/dashboard/field-force")
+  @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
+  dashboardFieldForce(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode?: string,
+    @Query("warehouseId") warehouseId?: string,
+    @Query("companyId") companyId?: string,
+    @Query("salesmanId") salesmanId?: string,
+    @Query("territoryId") territoryId?: string,
+    @Query("routeId") routeId?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("preset") preset?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.dashboard.fieldForce(
+      user.organizationId,
+      this.dashboardFilters({
+        branchCode,
+        warehouseId,
+        companyId,
+        salesmanId,
+        territoryId,
+        routeId,
+        from,
+        to,
+        preset,
+        limit,
+      }),
+    );
   }
 
   @Get("distribution/reports/:reportId")

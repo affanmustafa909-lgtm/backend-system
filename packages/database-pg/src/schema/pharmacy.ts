@@ -1,4 +1,4 @@
-import { boolean, date, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 import { popsBranches } from "./operations";
 import { users } from "./users";
@@ -21,6 +21,13 @@ export const pharmacyMedicines = pgTable("pharmacy_medicines", {
   manufacturer: text("manufacturer"),
   /** Optional FK to pharmacy_companies — set after companies table exists via app layer. */
   companyId: uuid("company_id"),
+  /** Reference masters (bare uuids to avoid pharmacy ↔ pharmacy-erp import cycles). */
+  genericId: uuid("generic_id"),
+  brandId: uuid("brand_id"),
+  categoryId: uuid("category_id"),
+  dosageFormId: uuid("dosage_form_id"),
+  unitId: uuid("unit_id"),
+  taxProfileId: uuid("tax_profile_id"),
   barcode: text("barcode"),
   alternateBarcode: text("alternate_barcode"),
   purchasePricePkr: integer("purchase_price_pkr").notNull().default(0),
@@ -33,6 +40,8 @@ export const pharmacyMedicines = pgTable("pharmacy_medicines", {
   taxPct: integer("tax_pct").notNull().default(0),
   reorderLevel: integer("reorder_level").notNull().default(10),
   suggestedReorderQty: integer("suggested_reorder_qty").notNull().default(0),
+  minStock: integer("min_stock").notNull().default(0),
+  maxStock: integer("max_stock").notNull().default(0),
   currentStock: integer("current_stock").notNull().default(0),
   unit: text("unit").notNull().default("Piece"),
   rackLocation: text("rack_location"),
@@ -45,11 +54,20 @@ export const pharmacyMedicines = pgTable("pharmacy_medicines", {
   /** sellingPricePkr is the price per strip when tabletsPerStrip > 1, else per piece. */
   isControlled: boolean("is_controlled").notNull().default(false),
   prescriptionRequired: boolean("prescription_required").notNull().default(false),
+  batchTrackingEnabled: boolean("batch_tracking_enabled").notNull().default(true),
+  expiryTrackingEnabled: boolean("expiry_tracking_enabled").notNull().default(true),
+  fefoEnabled: boolean("fefo_enabled").notNull().default(true),
+  restrictedSale: boolean("restricted_sale").notNull().default(false),
   status: text("status").notNull().default("active"),
   warningsJson: text("warnings_json"),
   instructionsJson: text("instructions_json"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("pharmacy_medicines_org_branch_status_idx").on(t.organizationId, t.branchId, t.status),
+  index("pharmacy_medicines_org_company_idx").on(t.organizationId, t.companyId),
+  /** Non-unique: legacy duplicates may exist; service enforces uniqueness on write. */
+  index("pharmacy_medicines_org_branch_sku_idx").on(t.organizationId, t.branchId, t.sku),
+]);
 
 export const pharmacyMedicineBatches = pgTable("pharmacy_medicine_batches", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -69,7 +87,10 @@ export const pharmacyMedicineBatches = pgTable("pharmacy_medicine_batches", {
   saleRatePkr: integer("sale_rate_pkr").notNull().default(0),
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("pharmacy_medicine_batches_medicine_expiry_idx").on(t.medicineId, t.expiryDate),
+  index("pharmacy_medicine_batches_expiry_qty_idx").on(t.expiryDate, t.quantity),
+]);
 
 export const pharmacyPatients = pgTable("pharmacy_patients", {
   id: uuid("id").defaultRandom().primaryKey(),
