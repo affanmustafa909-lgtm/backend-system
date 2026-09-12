@@ -394,24 +394,49 @@ async function main() {
   });
 
   await step("13. delivery + POD delivered", async () => {
-    const d = await req("POST", "/v1/pharmacy/distribution/deliveries", {
+    // Prefer new delivery module; fall back to legacy create + POD patch.
+    let d = await req("POST", "/v1/pharmacy/delivery/orders", {
       token,
       body: {
         branchCode: BRANCH,
-        orderId,
         invoiceId,
-        tradeCustomerId: tradeId,
-        riderName: `Rider ${stamp}`,
+        orderId,
         routeId,
+        riderName: `Rider ${stamp}`,
+        idempotencyKey: `dlv-lamos-${stamp}`,
       },
     });
+    if (!d.res.ok) {
+      d = await req("POST", "/v1/pharmacy/distribution/deliveries", {
+        token,
+        body: {
+          branchCode: BRANCH,
+          tradeCustomerId: tradeId,
+          riderName: `Rider ${stamp}`,
+          routeId,
+        },
+      });
+    }
     assertOk(d.res, d.json, "create delivery");
     deliveryId = d.json.id;
-    const u = await req("PATCH", `/v1/pharmacy/distribution/deliveries/${deliveryId}`, {
+    const pod = await req("POST", `/v1/pharmacy/delivery/orders/${deliveryId}/pod`, {
       token,
-      body: { status: "delivered", podNotes: `POD ok ${stamp}`, collectedPkr: 500 },
+      body: {
+        status: "delivered",
+        podNotes: `POD ok ${stamp}`,
+        collectedPkr: 500,
+        receiverName: `Receiver ${stamp}`,
+      },
     });
-    assertOk(u.res, u.json, "POD");
+    if (!pod.res.ok) {
+      const u = await req("PATCH", `/v1/pharmacy/distribution/deliveries/${deliveryId}`, {
+        token,
+        body: { status: "delivered", podNotes: `POD ok ${stamp}`, collectedPkr: 500 },
+      });
+      assertOk(u.res, u.json, "POD legacy");
+      return d.json.deliveryNumber || deliveryId.slice(0, 8);
+    }
+    assertOk(pod.res, pod.json, "POD");
     return d.json.deliveryNumber || deliveryId.slice(0, 8);
   });
 
@@ -566,12 +591,28 @@ async function main() {
     ];
     const counts = [];
     for (const id of ids) {
-      const r = await req("GET", `/v1/pharmacy/distribution/reports/${id}`, {
-        token,
-        query: { branchCode: BRANCH, from: today, to: today },
-      });
-      assertOk(r.res, r.json, id);
-      counts.push(`${id}:${(r.json.rows || []).length}`);
+      let lastErr = "";
+      let ok = false;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const r = await req("GET", `/v1/pharmacy/distribution/reports/${id}`, {
+            token,
+            query: { branchCode: BRANCH, from: today, to: today },
+          });
+          if (!r.res.ok) {
+            lastErr = Array.isArray(r.json?.message) ? r.json.message.join(", ") : r.json?.message || String(r.res.status);
+            await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+            continue;
+          }
+          counts.push(`${id}:${(r.json.rows || []).length}`);
+          ok = true;
+          break;
+        } catch (e) {
+          lastErr = e instanceof Error ? e.message : String(e);
+          await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+        }
+      }
+      if (!ok) throw new Error(`${id}: ${lastErr || "fetch failed"}`);
     }
     return counts.join(" ");
   });

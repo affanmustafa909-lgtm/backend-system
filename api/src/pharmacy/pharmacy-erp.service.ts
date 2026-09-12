@@ -1139,10 +1139,15 @@ export class PharmacyErpService {
     const taxPkr = Math.round(input.taxPkr ?? 0);
     const total = subtotal - discountPkr + taxPkr;
 
-    const creditEval = await this.credit.evaluate(organizationId, customer.id, total, {
-      creditOverride: input.creditOverride,
-      overrideReason: input.creditOverrideReason,
-    });
+    const paymentMethod = input.paymentMethod === "Cash" ? "Cash" : "Credit";
+    const isCashSale = paymentMethod === "Cash";
+
+    const creditEval = isCashSale
+      ? { allowed: true as const, requiresOverride: false, message: "" }
+      : await this.credit.evaluate(organizationId, customer.id, total, {
+          creditOverride: input.creditOverride,
+          overrideReason: input.creditOverrideReason,
+        });
     if (!creditEval.allowed) {
       throw new BadRequestException(creditEval.message);
     }
@@ -1213,7 +1218,7 @@ export class PharmacyErpService {
           creditOverrideByUserId: creditOverride ? (userId ?? null) : null,
           creditOverrideAt: creditOverride ? new Date() : null,
           idempotencyKey,
-          notes: input.notes ?? null,
+          notes: encodeDistPaymentMethod(input.notes, paymentMethod),
           createdByUserId: userId ?? null,
         })
         .returning({ id: pharmacyDistOrders.id });
@@ -1309,7 +1314,12 @@ export class PharmacyErpService {
     return { ...updated, lines: order.lines };
   }
 
-  async invoiceFromOrder(organizationId: string, id: string, userId?: string) {
+  async invoiceFromOrder(
+    organizationId: string,
+    id: string,
+    userId?: string,
+    opts?: { paymentMethod?: string },
+  ) {
     const invoiceable = [
       "approved",
       "submitted",
@@ -1345,6 +1355,12 @@ export class PharmacyErpService {
         locked.warehouseId ??
         (await this.stock.ensureDefaultWarehouse(organizationId, locked.branchId)).id;
 
+      const paymentMethod =
+        opts?.paymentMethod === "Cash" || opts?.paymentMethod === "COD"
+          ? "Cash"
+          : decodeDistPaymentMethod(locked.notes);
+      const isCash = paymentMethod === "Cash";
+
       const invoiceNumber = this.nextRef("WINV");
       const [invoice] = await tx
         .insert(pharmacyDistInvoices)
@@ -1355,9 +1371,9 @@ export class PharmacyErpService {
           tradeCustomerId: locked.tradeCustomerId,
           invoiceNumber,
           invoiceDate: new Date().toISOString().slice(0, 10),
-          paymentMethod: "Credit",
-          amountPaidPkr: 0,
-          amountDuePkr: locked.totalPkr,
+          paymentMethod,
+          amountPaidPkr: isCash ? locked.totalPkr : 0,
+          amountDuePkr: isCash ? 0 : locked.totalPkr,
           subtotalPkr: locked.subtotalPkr,
           discountPkr: locked.discountPkr,
           taxPkr: locked.taxPkr,
@@ -1416,7 +1432,8 @@ export class PharmacyErpService {
         .from(pharmacyTradeCustomers)
         .where(eq(pharmacyTradeCustomers.id, locked.tradeCustomerId))
         .limit(1);
-      if (customer) {
+      // Cash invoices are paid at invoice time — do not inflate AR outstanding.
+      if (customer && !isCash) {
         await tx
           .update(pharmacyTradeCustomers)
           .set({ outstandingPkr: customer.outstandingPkr + locked.totalPkr })
@@ -1427,7 +1444,7 @@ export class PharmacyErpService {
         .update(pharmacyDistOrders)
         .set({
           status: "invoiced",
-          paymentStatus: "unpaid",
+          paymentStatus: isCash ? "paid" : "unpaid",
           deliveryStatus: "pending",
           invoicedAt: new Date(),
         })

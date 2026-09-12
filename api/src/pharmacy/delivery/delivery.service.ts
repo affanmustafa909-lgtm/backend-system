@@ -281,33 +281,33 @@ export class DeliveryService {
       }
     }
 
+    // Avoid nested db.transaction here — some PG drivers (e.g. serverless) can
+    // return insert ids that are not visible to a follow-up getById.
     return this.numbering.withNumber(organizationId, "delivery", async (deliveryNumber) => {
-      return this.db.transaction(async (tx) => {
-        const [row] = await tx
-          .insert(pharmacyDeliveries)
-          .values({
-            organizationId,
-            branchId: branch.id,
-            deliveryNumber,
-            orderId: inv.orderId,
-            invoiceId: inv.id,
-            tradeCustomerId: inv.tradeCustomerId,
-            driverId: input.driverId ?? null,
-            vehicleId: input.vehicleId ?? null,
-            routeId: input.routeId ?? null,
-            warehouseId: input.warehouseId ?? null,
-            priority: input.priority ?? "normal",
-            address,
-            contactName,
-            contactPhone,
-            status: "ready",
-            idempotencyKey: input.idempotencyKey?.trim() || null,
-          })
-          .returning();
-        if (!row) throw new BadRequestException("Failed to create delivery");
-        await this.insertLinesFromInvoice(tx as unknown as PlatformPgDb, row.id, inv.id);
-        return this.getById(organizationId, row.id);
-      });
+      const [row] = await this.db
+        .insert(pharmacyDeliveries)
+        .values({
+          organizationId,
+          branchId: branch.id,
+          deliveryNumber,
+          orderId: inv.orderId,
+          invoiceId: inv.id,
+          tradeCustomerId: inv.tradeCustomerId,
+          driverId: input.driverId ?? null,
+          vehicleId: input.vehicleId ?? null,
+          routeId: input.routeId ?? null,
+          warehouseId: input.warehouseId ?? null,
+          priority: input.priority ?? "normal",
+          address,
+          contactName,
+          contactPhone,
+          status: "ready",
+          idempotencyKey: input.idempotencyKey?.trim() || null,
+        })
+        .returning();
+      if (!row) throw new BadRequestException("Failed to create delivery");
+      await this.insertLinesFromInvoice(this.db, row.id, inv.id);
+      return this.getById(organizationId, row.id);
     });
   }
 
@@ -372,36 +372,34 @@ export class DeliveryService {
     }
 
     return this.numbering.withNumber(organizationId, "delivery", async (deliveryNumber) => {
-      return this.db.transaction(async (tx) => {
-        const [row] = await tx
-          .insert(pharmacyDeliveries)
-          .values({
-            organizationId,
-            branchId: branch.id,
-            deliveryNumber,
-            orderId: order.id,
-            invoiceId,
-            tradeCustomerId: order.tradeCustomerId,
-            driverId: input.driverId ?? null,
-            vehicleId: input.vehicleId ?? null,
-            routeId: input.routeId ?? null,
-            warehouseId: input.warehouseId ?? order.warehouseId ?? null,
-            priority: input.priority ?? "normal",
-            address,
-            contactName,
-            contactPhone,
-            status: "ready",
-            idempotencyKey: input.idempotencyKey?.trim() || null,
-          })
-          .returning();
-        if (!row) throw new BadRequestException("Failed to create delivery");
-        if (invoiceId) {
-          await this.insertLinesFromInvoice(tx as unknown as PlatformPgDb, row.id, invoiceId);
-        } else {
-          await this.insertLinesFromOrder(tx as unknown as PlatformPgDb, row.id, order.id);
-        }
-        return this.getById(organizationId, row.id);
-      });
+      const [row] = await this.db
+        .insert(pharmacyDeliveries)
+        .values({
+          organizationId,
+          branchId: branch.id,
+          deliveryNumber,
+          orderId: order.id,
+          invoiceId,
+          tradeCustomerId: order.tradeCustomerId,
+          driverId: input.driverId ?? null,
+          vehicleId: input.vehicleId ?? null,
+          routeId: input.routeId ?? null,
+          warehouseId: input.warehouseId ?? order.warehouseId ?? null,
+          priority: input.priority ?? "normal",
+          address,
+          contactName,
+          contactPhone,
+          status: "ready",
+          idempotencyKey: input.idempotencyKey?.trim() || null,
+        })
+        .returning();
+      if (!row) throw new BadRequestException("Failed to create delivery");
+      if (invoiceId) {
+        await this.insertLinesFromInvoice(this.db, row.id, invoiceId);
+      } else {
+        await this.insertLinesFromOrder(this.db, row.id, order.id);
+      }
+      return this.getById(organizationId, row.id);
     });
   }
 

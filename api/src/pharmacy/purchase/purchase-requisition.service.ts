@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { and, count, desc, eq, type SQL } from "drizzle-orm";
 import {
+  pharmacyMedicines,
   pharmacyPurchaseRequisitionLines,
   pharmacyPurchaseRequisitions,
   pharmacyWarehouses,
@@ -89,8 +90,21 @@ export class PurchaseRequisitionService {
       .limit(1);
     if (!req) throw new NotFoundException("Purchase requisition not found");
     const lines = await this.db
-      .select()
+      .select({
+        id: pharmacyPurchaseRequisitionLines.id,
+        requisitionId: pharmacyPurchaseRequisitionLines.requisitionId,
+        medicineId: pharmacyPurchaseRequisitionLines.medicineId,
+        requestedQty: pharmacyPurchaseRequisitionLines.requestedQty,
+        suggestedQty: pharmacyPurchaseRequisitionLines.suggestedQty,
+        convertedQty: pharmacyPurchaseRequisitionLines.convertedQty,
+        preferredSupplierId: pharmacyPurchaseRequisitionLines.preferredSupplierId,
+        lastPurchasePricePkr: pharmacyPurchaseRequisitionLines.lastPurchasePricePkr,
+        notes: pharmacyPurchaseRequisitionLines.notes,
+        medicineName: pharmacyMedicines.name,
+        medicineSku: pharmacyMedicines.sku,
+      })
       .from(pharmacyPurchaseRequisitionLines)
+      .leftJoin(pharmacyMedicines, eq(pharmacyPurchaseRequisitionLines.medicineId, pharmacyMedicines.id))
       .where(eq(pharmacyPurchaseRequisitionLines.requisitionId, id));
     return { ...req, lines };
   }

@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { and, desc, eq, ilike, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import {
   pharmacyAuditLogs,
   pharmacyCompanies,
@@ -395,8 +395,55 @@ export class DistIoService {
       lines = rows.map((r) =>
         [r.invoiceNumber, r.invoiceDate, r.totalPkr, r.amountDuePkr, r.status].map(csvCell).join(","),
       );
+    } else if (module === "suppliers") {
+      const rows = await this.db
+        .select({
+          name: popsSuppliers.name,
+          phone: popsSuppliers.phone,
+          email: popsSuppliers.email,
+          address: popsSuppliers.address,
+          paymentTerms: popsSuppliers.paymentTerms,
+        })
+        .from(popsSuppliers)
+        .where(
+          and(
+            eq(popsSuppliers.organizationId, organizationId),
+            q ? or(ilike(popsSuppliers.name, `%${q}%`), ilike(popsSuppliers.phone, `%${q}%`)) : sql`true`,
+          ),
+        )
+        .limit(cap);
+      header = "Supplier Name,Phone,Email,Address,Payment Terms";
+      lines = rows.map((r) =>
+        [r.name, r.phone ?? "", r.email ?? "", r.address ?? "", r.paymentTerms ?? ""].map(csvCell).join(","),
+      );
+    } else if (module === "companies") {
+      const rows = await this.db
+        .select({
+          code: pharmacyCompanies.code,
+          name: pharmacyCompanies.name,
+          manufacturerName: pharmacyCompanies.manufacturerName,
+          status: pharmacyCompanies.status,
+        })
+        .from(pharmacyCompanies)
+        .where(
+          and(
+            eq(pharmacyCompanies.organizationId, organizationId),
+            q ? or(ilike(pharmacyCompanies.name, `%${q}%`), ilike(pharmacyCompanies.code, `%${q}%`)) : sql`true`,
+          ),
+        )
+        .limit(cap);
+      header = "Company Code,Company Name,Manufacturer,Status";
+      lines = rows.map((r) =>
+        [r.code, r.name, r.manufacturerName ?? "", r.status ?? ""].map(csvCell).join(","),
+      );
+    } else if (module === "opening_stock") {
+      throw new BadRequestException(
+        "Opening stock export is not available as a stock dump. Export medicines, then use the opening_stock import template.",
+      );
     } else {
-      throw new BadRequestException("Export module not supported. Use medicines, customers, or invoices.");
+      throw new BadRequestException(
+        "Export module not supported. Use medicines, customers, invoices, suppliers, or companies.",
+      );
     }
 
     if (lines.length >= cap) {

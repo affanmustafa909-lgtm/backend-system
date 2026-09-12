@@ -9,6 +9,7 @@ import { and, count, desc, eq, gte, lte, sql, type SQL } from "drizzle-orm";
 import {
   pharmacyGrnLines,
   pharmacyGrns,
+  pharmacyMedicines,
   pharmacyPurchaseOrderLines,
   pharmacyStockMovements,
   pharmacyWarehouses,
@@ -114,7 +115,26 @@ export class PurchaseGrnService {
       .where(and(eq(pharmacyGrns.id, id), eq(pharmacyGrns.organizationId, organizationId)))
       .limit(1);
     if (!grn) throw new NotFoundException("GRN not found");
-    const lines = await this.db.select().from(pharmacyGrnLines).where(eq(pharmacyGrnLines.grnId, id));
+    const lines = await this.db
+      .select({
+        id: pharmacyGrnLines.id,
+        grnId: pharmacyGrnLines.grnId,
+        medicineId: pharmacyGrnLines.medicineId,
+        batchId: pharmacyGrnLines.batchId,
+        purchaseOrderLineId: pharmacyGrnLines.purchaseOrderLineId,
+        batchNumber: pharmacyGrnLines.batchNumber,
+        manufacturingDate: pharmacyGrnLines.manufacturingDate,
+        expiryDate: pharmacyGrnLines.expiryDate,
+        quantity: pharmacyGrnLines.quantity,
+        freeQuantity: pharmacyGrnLines.freeQuantity,
+        unitCostPkr: pharmacyGrnLines.unitCostPkr,
+        lineTotalPkr: pharmacyGrnLines.lineTotalPkr,
+        medicineName: pharmacyMedicines.name,
+        medicineSku: pharmacyMedicines.sku,
+      })
+      .from(pharmacyGrnLines)
+      .leftJoin(pharmacyMedicines, eq(pharmacyGrnLines.medicineId, pharmacyMedicines.id))
+      .where(eq(pharmacyGrnLines.grnId, id));
     return { ...grn, lines };
   }
 

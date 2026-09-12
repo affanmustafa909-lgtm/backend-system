@@ -877,6 +877,8 @@ export const createPharmacyDistOrderSchema = z.object({
   warehouseId: z.string().uuid().optional(),
   tradeCustomerId: z.string().uuid(),
   salesmanEmployeeId: z.string().uuid().optional(),
+  /** Cash = paid sale (no AR increase on invoice). Credit = default wholesale. */
+  paymentMethod: z.enum(["Cash", "Credit"]).optional(),
   creditOverride: z.boolean().optional(),
   creditOverrideReason: z.string().min(1).optional(),
   priceOverrideReason: z.string().min(1).optional(),

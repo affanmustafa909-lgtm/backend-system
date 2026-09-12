@@ -108,25 +108,25 @@ export class SalesSearchService {
     const branch = await this.resolveBranch(organizationId, branchCode);
     const { page, pageSize, offset } = this.clampPage(opts.page, opts.pageSize, 24, 50);
     const term = q?.trim() ?? "";
-    if (!term) {
-      return { items: [] as LeanSaleProduct[], page, pageSize, total: 0 };
-    }
-
-    const like = `%${term}%`;
+    const like = term ? `%${term}%` : null;
     const conds: SQL[] = [
       eq(pharmacyMedicines.organizationId, organizationId),
       eq(pharmacyMedicines.branchId, branch.id),
       eq(pharmacyMedicines.status, "active"),
-      or(
-        ilike(pharmacyMedicines.name, like),
-        ilike(pharmacyMedicines.sku, like),
-        ilike(pharmacyMedicines.barcode, like),
-        ilike(pharmacyMedicines.alternateBarcode, like),
-        ilike(pharmacyMedicines.genericName, like),
-        ilike(pharmacyMedicines.brandName, like),
-        ilike(pharmacyCompanies.name, like),
-      )!,
     ];
+    if (like) {
+      conds.push(
+        or(
+          ilike(pharmacyMedicines.name, like),
+          ilike(pharmacyMedicines.sku, like),
+          ilike(pharmacyMedicines.barcode, like),
+          ilike(pharmacyMedicines.alternateBarcode, like),
+          ilike(pharmacyMedicines.genericName, like),
+          ilike(pharmacyMedicines.brandName, like),
+          ilike(pharmacyCompanies.name, like),
+        )!,
+      );
+    }
 
     const where = and(...conds);
     const fromJoin = this.db
@@ -214,23 +214,23 @@ export class SalesSearchService {
   ) {
     const { page, pageSize, offset } = this.clampPage(opts.page, opts.pageSize, 20, 50);
     const term = q?.trim() ?? "";
-    if (!term) {
-      return { items: [] as LeanSaleCustomer[], page, pageSize, total: 0 };
-    }
-
-    const like = `%${term}%`;
+    const like = term ? `%${term}%` : null;
     const conds: SQL[] = [
       eq(pharmacyTradeCustomers.organizationId, organizationId),
       eq(pharmacyTradeCustomers.status, "active"),
-      or(
-        ilike(pharmacyTradeCustomers.name, like),
-        ilike(pharmacyTradeCustomers.code, like),
-        ilike(pharmacyTradeCustomers.phone, like),
-        ilike(pharmacyTradeCustomers.businessName, like),
-        ilike(pharmacyCities.name, like),
-        ilike(pharmacyAreas.name, like),
-      )!,
     ];
+    if (like) {
+      conds.push(
+        or(
+          ilike(pharmacyTradeCustomers.name, like),
+          ilike(pharmacyTradeCustomers.code, like),
+          ilike(pharmacyTradeCustomers.phone, like),
+          ilike(pharmacyTradeCustomers.businessName, like),
+          ilike(pharmacyCities.name, like),
+          ilike(pharmacyAreas.name, like),
+        )!,
+      );
+    }
     if (opts.customerType?.trim()) {
       conds.push(eq(pharmacyTradeCustomers.customerType, opts.customerType.trim()));
     }

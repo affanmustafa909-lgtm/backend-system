@@ -1,0 +1,196 @@
+{
+  "api": "https://backend-system-production-28a3.up.railway.app",
+  "email": "admin.distribution@pops.demo",
+  "branch": "DIST-HQ",
+  "stamp": "ZDB62",
+  "divisionCities": [
+    "Lahore",
+    "Faisalabad",
+    "Gujranwala",
+    "Sialkot",
+    "Sheikhupura",
+    "Kasur",
+    "Okara"
+  ],
+  "yearFrom": "2025-09-12",
+  "yearTo": "2026-09-12",
+  "monthOrders": [
+    {
+      "ym": "2025-10",
+      "orderNumber": "DO-93117591"
+    },
+    {
+      "ym": "2025-11",
+      "orderNumber": "DO-93120920"
+    },
+    {
+      "ym": "2025-12",
+      "orderNumber": "DO-93124258"
+    },
+    {
+      "ym": "2026-01",
+      "orderNumber": "DO-93127590"
+    },
+    {
+      "ym": "2026-02",
+      "orderNumber": "DO-93130927"
+    },
+    {
+      "ym": "2026-03",
+      "orderNumber": "DO-93134364"
+    },
+    {
+      "ym": "2026-04",
+      "orderNumber": "DO-93137694"
+    },
+    {
+      "ym": "2026-05",
+      "orderNumber": "DO-93141015"
+    },
+    {
+      "ym": "2026-06",
+      "orderNumber": "DO-93144339"
+    },
+    {
+      "ym": "2026-07",
+      "orderNumber": "DO-93147663"
+    },
+    {
+      "ym": "2026-08",
+      "orderNumber": "DO-93151369"
+    },
+    {
+      "ym": "2026-09",
+      "orderNumber": "DO-93154831"
+    }
+  ],
+  "passed": 24,
+  "failed": 1,
+  "results": [
+    {
+      "name": "01.login",
+      "ok": true,
+      "detail": "admin.distribution@pops.demo"
+    },
+    {
+      "name": "01b.health+me",
+      "ok": true,
+      "detail": "health=200"
+    },
+    {
+      "name": "02.company",
+      "ok": true,
+      "detail": "YR-ZDB62"
+    },
+    {
+      "name": "03.supplier",
+      "ok": true,
+      "detail": "Year Supplier ZDB62"
+    },
+    {
+      "name": "04.warehouse",
+      "ok": true,
+      "detail": "reuse=MAIN"
+    },
+    {
+      "name": "05.medicines+stock",
+      "ok": true,
+      "detail": "YR-A-ZDB62+YR-B-ZDB62"
+    },
+    {
+      "name": "06.geo.province+1division",
+      "ok": true,
+      "detail": "division=Central Division ZDB62"
+    },
+    {
+      "name": "07.geo.7cities+areas",
+      "ok": true,
+      "detail": "Lahore,Faisalabad,Gujranwala,Sialkot,Sheikhupura,Kasur,Okara"
+    },
+    {
+      "name": "08.tradeCustomers.7cities",
+      "ok": true,
+      "detail": "7 customers"
+    },
+    {
+      "name": "09.pricing.list+scheme",
+      "ok": true,
+      "detail": "list=true scheme=true"
+    },
+    {
+      "name": "10.purchase.PO+approve",
+      "ok": true,
+      "detail": "PO-2026-00006"
+    },
+    {
+      "name": "10b.purchase.requisition+submit",
+      "ok": true,
+      "detail": "req=REQ-2026-00004 submit=true"
+    },
+    {
+      "name": "11.sales.12months.book",
+      "ok": true,
+      "detail": "12 orders booked"
+    },
+    {
+      "name": "12.sales.approve+invoice.sample",
+      "ok": true,
+      "detail": "invoiced=4/4"
+    },
+    {
+      "name": "13.delivery+POD.sample",
+      "ok": false,
+      "detail": "no PODs; create:2025-10:Delivery not found; create:2025-11:Delivery not found; create:2025-12:Delivery not found"
+    },
+    {
+      "name": "14.collections.sample",
+      "ok": true,
+      "detail": "collections=3"
+    },
+    {
+      "name": "15.wholesaleReturn",
+      "ok": true,
+      "detail": "WRN-93209253"
+    },
+    {
+      "name": "16.cash.sessionON+in+out",
+      "ok": true,
+      "detail": "session=0f7ccdd7"
+    },
+    {
+      "name": "16b.expense.create",
+      "ok": true,
+      "detail": "EXP-XZG0TB"
+    },
+    {
+      "name": "17.fieldForce",
+      "ok": true,
+      "detail": "target=true assign=true visit=true"
+    },
+    {
+      "name": "18.dashboards",
+      "ok": true,
+      "detail": "6/6"
+    },
+    {
+      "name": "19.lists.core",
+      "ok": true,
+      "detail": "14/14"
+    },
+    {
+      "name": "20.reports.yearWindow",
+      "ok": true,
+      "detail": "12/12 (all-major-ok)"
+    },
+    {
+      "name": "21.finance+inventory",
+      "ok": true,
+      "detail": "7/7"
+    },
+    {
+      "name": "22.io.templates",
+      "ok": true,
+      "detail": "modules=true template=true"
+    }
+  ]
+}

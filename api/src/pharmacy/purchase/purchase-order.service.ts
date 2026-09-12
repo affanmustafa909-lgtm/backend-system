@@ -7,6 +7,7 @@ import {
 import type { CreatePharmacyPurchaseOrder } from "@platform/contracts";
 import { and, count, desc, eq, gte, ilike, lte, or, sql, type SQL } from "drizzle-orm";
 import {
+  pharmacyMedicines,
   pharmacyPurchaseOrderLines,
   pharmacyPurchaseOrders,
   popsBranches,
@@ -157,16 +158,42 @@ export class PurchaseOrderService {
       )
       .limit(1);
     if (!po) throw new NotFoundException("Purchase order not found");
+
+    let supplierName: string | null = null;
+    if (po.supplierId) {
+      const [supplier] = await this.db
+        .select({ name: popsSuppliers.name })
+        .from(popsSuppliers)
+        .where(eq(popsSuppliers.id, po.supplierId))
+        .limit(1);
+      supplierName = supplier?.name ?? null;
+    }
+
     const lines = await this.db
-      .select()
+      .select({
+        id: pharmacyPurchaseOrderLines.id,
+        purchaseOrderId: pharmacyPurchaseOrderLines.purchaseOrderId,
+        medicineId: pharmacyPurchaseOrderLines.medicineId,
+        quantity: pharmacyPurchaseOrderLines.quantity,
+        freeQuantity: pharmacyPurchaseOrderLines.freeQuantity,
+        receivedQty: pharmacyPurchaseOrderLines.receivedQty,
+        unitCostPkr: pharmacyPurchaseOrderLines.unitCostPkr,
+        discountPkr: pharmacyPurchaseOrderLines.discountPkr,
+        taxPkr: pharmacyPurchaseOrderLines.taxPkr,
+        lineTotalPkr: pharmacyPurchaseOrderLines.lineTotalPkr,
+        notes: pharmacyPurchaseOrderLines.notes,
+        medicineName: pharmacyMedicines.name,
+        medicineSku: pharmacyMedicines.sku,
+      })
       .from(pharmacyPurchaseOrderLines)
+      .leftJoin(pharmacyMedicines, eq(pharmacyPurchaseOrderLines.medicineId, pharmacyMedicines.id))
       .where(eq(pharmacyPurchaseOrderLines.purchaseOrderId, id));
     const enriched = lines.map((l) => {
       const ordered = l.quantity + l.freeQuantity;
       const pending = Math.max(0, ordered - l.receivedQty);
       return { ...l, orderedQty: ordered, pendingQty: pending };
     });
-    return { ...po, lines: enriched };
+    return { ...po, supplierName, lines: enriched };
   }
 
   async create(
