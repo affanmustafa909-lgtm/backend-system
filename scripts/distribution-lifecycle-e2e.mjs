@@ -121,11 +121,29 @@ async function main() {
   await step("02. company master", async () => {
     const c = await req("POST", "/v1/pharmacy/companies", {
       token,
-      body: { code: `COM-${stamp}`, name: `Dist Co ${stamp}`, manufacturerName: "Lifecycle Labs" },
+      body: { code: `LAMOS-${stamp}`, name: `Lamos Pharma ${stamp}`, manufacturerName: "Lamos" },
     });
     assertOk(c.res, c.json, "company");
     companyId = c.json.id;
     return c.json.code;
+  });
+
+  let supplierId = "";
+  await step("02b. supplier", async () => {
+    const s = await req("POST", "/v1/inventory/suppliers", {
+      token,
+      body: {
+        branchCode: BRANCH,
+        name: `Lamos Supplier ${stamp}`,
+        phone: "0421111111",
+        email: `lamos.supplier.${stamp.toLowerCase()}@demo.local`,
+        address: "Lahore",
+        paymentTerms: "Net 30",
+      },
+    });
+    assertOk(s.res, s.json, "supplier");
+    supplierId = s.json.id;
+    return s.json.name || s.json.id?.slice(0, 8);
   });
 
   await step("03. warehouse", async () => {
@@ -144,24 +162,24 @@ async function main() {
     return c.json.code;
   });
 
-  await step("04. medicines (stocked)", async () => {
+  await step("04. medicines (stocked) — Lamos 90000", async () => {
     const m1 = await req("POST", "/v1/pharmacy/medicines", {
       token,
       body: {
         branchCode: BRANCH,
-        sku: `MED-A-${stamp}`,
-        name: `Augmentin Dist ${stamp}`,
+        sku: `LAMOS-${stamp}`,
+        name: `Lamos ${stamp}`,
         category: "Tablet",
         companyId,
-        sellingPrice: 120,
-        wholesalePrice: 95,
-        purchasePrice: 70,
-        currentStock: 2000,
+        sellingPrice: 90000,
+        wholesalePrice: 90000,
+        purchasePrice: 75000,
+        currentStock: 500,
         tabletsPerStrip: 10,
         stripsPerBox: 10,
       },
     });
-    assertOk(m1.res, m1.json, "medicine A");
+    assertOk(m1.res, m1.json, "Lamos medicine");
     medicineId = m1.json.id;
     const m2 = await req("POST", "/v1/pharmacy/medicines", {
       token,
@@ -181,7 +199,7 @@ async function main() {
     });
     assertOk(m2.res, m2.json, "medicine B");
     medicineId2 = m2.json.id;
-    return `${m1.json.sku}+${m2.json.sku}`;
+    return `Lamos@90000=${m1.json.sku}+${m2.json.sku}`;
   });
 
   await step("05. geo Province→…→Route", async () => {
@@ -303,9 +321,10 @@ async function main() {
       token,
       body: {
         branchCode: BRANCH,
-        notes: `Lifecycle PO ${stamp}`,
+        supplierId: supplierId || undefined,
+        notes: `Lamos PO ${stamp}`,
         lines: [
-          { medicineId, quantity: 100, unitCostPkr: 70 },
+          { medicineId, quantity: 20, unitCostPkr: 75000 },
           { medicineId: medicineId2, quantity: 50, unitCostPkr: 40 },
         ],
       },
@@ -326,7 +345,7 @@ async function main() {
         tradeCustomerId: tradeId,
         submit: true,
         lines: [
-          { medicineId, quantity: 20, unitPricePkr: 95 },
+          { medicineId, quantity: 1, unitPricePkr: 90000 },
           { medicineId: medicineId2, quantity: 10, unitPricePkr: 60 },
         ],
       },
@@ -422,7 +441,7 @@ async function main() {
         invoiceId,
         warehouseId,
         reason: `Damaged sample ${stamp}`,
-        lines: [{ medicineId, quantity: 1, unitPricePkr: 95 }],
+        lines: [{ medicineId, quantity: 1, unitPricePkr: 90000 }],
       },
     });
     assertOk(r.res, r.json, "wholesale return");
