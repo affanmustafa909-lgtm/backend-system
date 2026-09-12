@@ -449,8 +449,12 @@ export class PharmacyErpController {
 
   @Post("distribution/orders/:id/invoice")
   @RequirePermissions("distribution.orders", "pops.inventory.manage")
-  invoiceDistOrder(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string) {
-    return this.erp.invoiceFromOrder(user.organizationId, id, user.sub);
+  invoiceDistOrder(
+    @CurrentUser() user: AccessJwtPayload,
+    @Param("id") id: string,
+    @Body() body?: { paymentMethod?: string },
+  ) {
+    return this.erp.invoiceFromOrder(user.organizationId, id, user.sub, body);
   }
 
   @Post("distribution/orders/:id/advance")

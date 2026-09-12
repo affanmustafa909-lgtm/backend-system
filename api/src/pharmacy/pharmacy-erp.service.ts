@@ -77,6 +77,18 @@ import { SalesPricingService } from "./sales/sales-pricing.service";
 import { CollectionService } from "./collections/collection.service";
 import { DeliveryService } from "./delivery/delivery.service";
 
+const DIST_PM_RE = /\[\[pm:(Cash|Credit)\]\]/;
+
+function encodeDistPaymentMethod(notes: string | undefined, paymentMethod: "Cash" | "Credit"): string {
+  const cleaned = (notes ?? "").replace(DIST_PM_RE, "").trim();
+  return `[[pm:${paymentMethod}]]${cleaned ? ` ${cleaned}` : ""}`;
+}
+
+function decodeDistPaymentMethod(notes: string | null | undefined): "Cash" | "Credit" {
+  const m = notes?.match(DIST_PM_RE);
+  return m?.[1] === "Cash" ? "Cash" : "Credit";
+}
+
 @Injectable()
 export class PharmacyErpService {
   private readonly logger = new Logger(PharmacyErpService.name);
@@ -1302,7 +1314,9 @@ export class PharmacyErpService {
       .where(eq(pharmacyTradeCustomers.id, order.tradeCustomerId))
       .limit(1);
     if (customer && !order.creditOverride && customer.creditLimitPkr > 0) {
-      if (customer.outstandingPkr + order.totalPkr > customer.creditLimitPkr) {
+      if (decodeDistPaymentMethod(order.notes) === "Cash") {
+        // Cash orders skip credit gate
+      } else if (customer.outstandingPkr + order.totalPkr > customer.creditLimitPkr) {
         throw new BadRequestException("Credit limit exceeded — use credit override to approve");
       }
     }
