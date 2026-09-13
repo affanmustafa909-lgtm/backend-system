@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { and, count, desc, eq, ilike, or, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { pharmacyVehicles, popsBranches, type PlatformPgDb } from "@platform/database-pg";
 import { DRIZZLE } from "../../drizzle/drizzle.tokens";
 
@@ -39,8 +39,22 @@ export class VehicleService {
     const branch = await this.resolveBranch(organizationId, filters.branchCode);
 
     const conds: SQL[] = [eq(pharmacyVehicles.organizationId, organizationId)];
-    if (branch) conds.push(eq(pharmacyVehicles.branchId, branch.id));
+    if (branch) {
+      conds.push(
+        or(eq(pharmacyVehicles.branchId, branch.id), sql`${pharmacyVehicles.branchId} is null`)!,
+      );
+    }
     if (filters.status?.trim()) conds.push(eq(pharmacyVehicles.status, filters.status.trim()));
+    else {
+      // Default: usable fleet (exclude inactive / maintenance unless explicitly filtered)
+      conds.push(
+        or(
+          eq(pharmacyVehicles.status, "available"),
+          eq(pharmacyVehicles.status, "assigned"),
+          eq(pharmacyVehicles.status, "on_route"),
+        )!,
+      );
+    }
     if (filters.q?.trim()) {
       const q = `%${filters.q.trim()}%`;
       conds.push(

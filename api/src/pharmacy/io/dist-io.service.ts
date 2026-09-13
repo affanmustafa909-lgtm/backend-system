@@ -10,6 +10,7 @@ import {
   pharmacyWarehouses,
   popsBranches,
   popsSuppliers,
+  users,
   type PlatformPgDb,
 } from "@platform/database-pg";
 import { createMedicineSchema } from "@platform/contracts";
@@ -345,11 +346,17 @@ export class DistIoService {
           sku: pharmacyMedicines.sku,
           name: pharmacyMedicines.name,
           genericName: pharmacyMedicines.genericName,
+          companyCode: pharmacyCompanies.code,
           barcode: pharmacyMedicines.barcode,
+          unit: pharmacyMedicines.unit,
+          taxPct: pharmacyMedicines.taxPct,
+          purchasePricePkr: pharmacyMedicines.purchasePricePkr,
           sellingPricePkr: pharmacyMedicines.sellingPricePkr,
+          wholesalePricePkr: pharmacyMedicines.wholesalePricePkr,
           status: pharmacyMedicines.status,
         })
         .from(pharmacyMedicines)
+        .leftJoin(pharmacyCompanies, eq(pharmacyCompanies.id, pharmacyMedicines.companyId))
         .where(
           and(
             eq(pharmacyMedicines.organizationId, organizationId),
@@ -357,9 +364,25 @@ export class DistIoService {
           ),
         )
         .limit(cap);
-      header = "Product Code,Product Name,Generic,Barcode,Sale Price,Status";
+      // Headers match import template labels so export → edit → re-import maps cleanly
+      header =
+        "Product Code,Product Name,Generic,Company Code,Barcode,Unit,Tax %,Purchase Price,Sale Price,Wholesale Price,Status";
       lines = rows.map((r) =>
-        [r.sku, r.name, r.genericName ?? "", r.barcode ?? "", r.sellingPricePkr, r.status].map(csvCell).join(","),
+        [
+          r.sku,
+          r.name,
+          r.genericName ?? "",
+          r.companyCode ?? "",
+          r.barcode ?? "",
+          r.unit ?? "",
+          r.taxPct,
+          r.purchasePricePkr,
+          r.sellingPricePkr,
+          r.wholesalePricePkr,
+          r.status,
+        ]
+          .map(csvCell)
+          .join(","),
       );
     } else if (module === "customers") {
       const rows = await this.db
@@ -496,13 +519,48 @@ export class DistIoService {
       .from(pharmacyAuditLogs)
       .where(eq(pharmacyAuditLogs.organizationId, organizationId));
     const items = await this.db
-      .select()
+      .select({
+        id: pharmacyAuditLogs.id,
+        organizationId: pharmacyAuditLogs.organizationId,
+        branchId: pharmacyAuditLogs.branchId,
+        userId: pharmacyAuditLogs.userId,
+        action: pharmacyAuditLogs.action,
+        entityType: pharmacyAuditLogs.entityType,
+        entityId: pharmacyAuditLogs.entityId,
+        oldValueJson: pharmacyAuditLogs.oldValueJson,
+        newValueJson: pharmacyAuditLogs.newValueJson,
+        reason: pharmacyAuditLogs.reason,
+        createdAt: pharmacyAuditLogs.createdAt,
+        userName: users.name,
+        userEmail: users.email,
+      })
       .from(pharmacyAuditLogs)
+      .leftJoin(users, eq(users.id, pharmacyAuditLogs.userId))
       .where(eq(pharmacyAuditLogs.organizationId, organizationId))
       .orderBy(desc(pharmacyAuditLogs.createdAt))
       .limit(safeSize)
       .offset((safePage - 1) * safeSize);
-    return { items, page: safePage, pageSize: safeSize, total: countRow?.n ?? 0 };
+
+    return {
+      items: items.map((row) => {
+        const entityLabel = labelFromAuditJson(row.newValueJson) ?? labelFromAuditJson(row.oldValueJson);
+        const userLabel =
+          (row.userName && String(row.userName).trim()) ||
+          (row.userEmail && String(row.userEmail).trim()) ||
+          null;
+        return {
+          ...row,
+          entityLabel,
+          userLabel,
+          // Convenience aliases for Dist audit grid
+          recordLabel: entityLabel,
+          userDisplay: userLabel,
+        };
+      }),
+      page: safePage,
+      pageSize: safeSize,
+      total: countRow?.n ?? 0,
+    };
   }
 
   private async commitRow(
@@ -713,4 +771,42 @@ function num(v?: string) {
 function csvCell(v: unknown) {
   const s = String(v ?? "");
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function labelFromAuditJson(raw?: string | null): string | null {
+  if (!raw?.trim()) return null;
+  try {
+    const o = JSON.parse(raw) as Record<string, unknown>;
+    if (!o || typeof o !== "object") return null;
+    const name = o.name != null ? String(o.name).trim() : "";
+    const code = o.code != null ? String(o.code).trim() : "";
+    const sku = o.sku != null ? String(o.sku).trim() : "";
+    const deliveryNumber = o.deliveryNumber != null ? String(o.deliveryNumber).trim() : "";
+    const countNumber = o.countNumber != null ? String(o.countNumber).trim() : "";
+    const invoiceNumber = o.invoiceNumber != null ? String(o.invoiceNumber).trim() : "";
+    const orderNumber = o.orderNumber != null ? String(o.orderNumber).trim() : "";
+    const transferNumber = o.transferNumber != null ? String(o.transferNumber).trim() : "";
+    const adjustmentNumber = o.adjustmentNumber != null ? String(o.adjustmentNumber).trim() : "";
+
+    const primary =
+      (name && !UUID_RE.test(name) ? name : "") ||
+      (sku && !UUID_RE.test(sku) ? sku : "") ||
+      (deliveryNumber && !UUID_RE.test(deliveryNumber) ? deliveryNumber : "") ||
+      (countNumber && !UUID_RE.test(countNumber) ? countNumber : "") ||
+      (invoiceNumber && !UUID_RE.test(invoiceNumber) ? invoiceNumber : "") ||
+      (orderNumber && !UUID_RE.test(orderNumber) ? orderNumber : "") ||
+      (transferNumber && !UUID_RE.test(transferNumber) ? transferNumber : "") ||
+      (adjustmentNumber && !UUID_RE.test(adjustmentNumber) ? adjustmentNumber : "") ||
+      (code && !UUID_RE.test(code) ? code : "");
+
+    if (!primary) return null;
+    if (code && name && code !== name && !UUID_RE.test(code)) return `${code} — ${name}`;
+    if (sku && name && sku !== name) return `${sku} — ${name}`;
+    return primary;
+  } catch {
+    return null;
+  }
 }

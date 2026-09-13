@@ -429,6 +429,12 @@ export class PharmacyErpController {
     return this.erp.listDistOrders(user.organizationId, branchCode?.trim());
   }
 
+  @Get("distribution/orders/:id")
+  @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
+  getDistOrder(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string) {
+    return this.erp.getDistOrder(user.organizationId, id);
+  }
+
   @Get("distribution/invoices")
   @RequirePermissions("distribution.orders", "pharmacy.view", "pops.read")
   listDistInvoices(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode?: string) {

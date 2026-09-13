@@ -122,16 +122,17 @@ export class PharmacyStockEngine {
   /**
    * Refreshes the `pharmacy_medicines.currentStock` cache.
    *
-   * `currentStock` is a denormalised cache of the AVAILABLE bucket
-   * (`SUM(batches.quantity)`), kept for backward compatibility with existing
-   * screens and reports. It is not the source of truth — batch rows are.
-   * Accurate sellable stock comes from StockAvailabilityService, which also
-   * excludes expired and on-hold batches.
+   * Matches StockAvailabilityService.availableQty: SUM of batch `quantity`
+   * for active + unexpired batches only. Expired / on-hold units are excluded
+   * so Medicines / Sale fallback / dashboards agree with Stock & Sale Window.
+   * Batch rows remain the source of truth for physical breakdowns.
    */
   async recomputeMedicineStock(medicineId: string, tx: StockTx = this.db): Promise<number> {
+    const active = sql`lower(coalesce(${pharmacyMedicineBatches.status}, 'active')) = 'active'`;
+    const unexpired = sql`${pharmacyMedicineBatches.expiryDate} >= current_date`;
     const [row] = await tx
       .select({
-        total: sql<number>`coalesce(sum(${pharmacyMedicineBatches.quantity}), 0)`,
+        total: sql<number>`coalesce(sum(case when ${active} and ${unexpired} then ${pharmacyMedicineBatches.quantity} else 0 end), 0)`,
       })
       .from(pharmacyMedicineBatches)
       .where(eq(pharmacyMedicineBatches.medicineId, medicineId));

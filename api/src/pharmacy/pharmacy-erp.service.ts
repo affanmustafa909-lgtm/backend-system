@@ -15,7 +15,7 @@ import type {
   CreatePharmacyTradeCustomer,
   CreatePharmacyWarehouse,
 } from "@platform/contracts";
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import {
   pharmacyAreas,
   pharmacyAssignments,
@@ -417,12 +417,95 @@ export class PharmacyErpService {
 
   // ─── Geography ───────────────────────────────────────────────────────────
 
+  /** Case-insensitive name/code uniqueness within an org (and optional parent scope). */
+  private async assertGeoUnique(opts: {
+    table:
+      | typeof pharmacyProvinces
+      | typeof pharmacyDivisions
+      | typeof pharmacyDistricts
+      | typeof pharmacyCities
+      | typeof pharmacyAreas
+      | typeof pharmacyGeoTerritories
+      | typeof pharmacyRoutes
+      | typeof pharmacyTerritories;
+    organizationId: string;
+    code: string;
+    name: string;
+    label: string;
+    parentEq?: ReturnType<typeof eq>;
+  }) {
+    const code = opts.code.trim();
+    const name = opts.name.trim();
+    const nameKey = name.toLowerCase();
+    const codeKey = code.toLowerCase();
+    const base = [eq(opts.table.organizationId, opts.organizationId)];
+    if (opts.parentEq) base.push(opts.parentEq);
+
+    const existing = await this.db
+      .select({
+        id: opts.table.id,
+        code: opts.table.code,
+        name: opts.table.name,
+        status: opts.table.status,
+      })
+      .from(opts.table)
+      .where(and(...base));
+
+    const byName = existing.find((r) => r.name.trim().toLowerCase() === nameKey);
+    if (byName) {
+      throw new ConflictException(
+        `${opts.label} "${name}" already exists${byName.status === "inactive" ? " (inactive)" : ""} — use the existing one`,
+      );
+    }
+    const byCode = existing.find((r) => r.code.trim().toLowerCase() === codeKey);
+    if (byCode) {
+      throw new ConflictException(
+        `${opts.label} code "${code}" already exists — pick a different code`,
+      );
+    }
+  }
+
+  /** Keep one row per unique key (oldest wins); soft-deactivate the rest. */
+  private async dedupeGeoRows<T extends { id: string; status: string; createdAt: Date }>(
+    table:
+      | typeof pharmacyProvinces
+      | typeof pharmacyDivisions
+      | typeof pharmacyDistricts
+      | typeof pharmacyCities
+      | typeof pharmacyAreas
+      | typeof pharmacyGeoTerritories
+      | typeof pharmacyRoutes
+      | typeof pharmacyTerritories,
+    rows: T[],
+    keyOf: (row: T) => string,
+  ): Promise<T[]> {
+    const byKey = new Map<string, T>();
+    const dupIds: string[] = [];
+    const ordered = [...rows].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+    for (const row of ordered) {
+      const key = keyOf(row).trim().toLowerCase();
+      if (!key) continue;
+      if (byKey.has(key)) dupIds.push(row.id);
+      else byKey.set(key, row);
+    }
+    if (dupIds.length > 0) {
+      await this.db
+        .update(table)
+        .set({ status: "inactive" })
+        .where(inArray(table.id, dupIds));
+    }
+    return [...byKey.values()].filter((r) => r.status !== "inactive");
+  }
+
   async listTerritories(organizationId: string) {
-    return this.db
+    const rows = await this.db
       .select()
       .from(pharmacyTerritories)
       .where(eq(pharmacyTerritories.organizationId, organizationId))
-      .orderBy(desc(pharmacyTerritories.createdAt));
+      .orderBy(asc(pharmacyTerritories.createdAt));
+    return this.dedupeGeoRows(pharmacyTerritories, rows, (r) => r.name);
   }
 
   async createTerritory(
@@ -432,6 +515,13 @@ export class PharmacyErpService {
     if (!input.code?.trim() || !input.name?.trim()) {
       throw new BadRequestException("code and name are required");
     }
+    await this.assertGeoUnique({
+      table: pharmacyTerritories,
+      organizationId,
+      code: input.code,
+      name: input.name,
+      label: "Territory",
+    });
     const [row] = await this.db
       .insert(pharmacyTerritories)
       .values({
@@ -446,11 +536,12 @@ export class PharmacyErpService {
   }
 
   async listCities(organizationId: string) {
-    return this.db
+    const rows = await this.db
       .select()
       .from(pharmacyCities)
       .where(eq(pharmacyCities.organizationId, organizationId))
-      .orderBy(desc(pharmacyCities.createdAt));
+      .orderBy(asc(pharmacyCities.createdAt));
+    return this.dedupeGeoRows(pharmacyCities, rows, (r) => r.name);
   }
 
   async createCity(
@@ -460,6 +551,13 @@ export class PharmacyErpService {
     if (!input.code?.trim() || !input.name?.trim()) {
       throw new BadRequestException("code and name are required");
     }
+    await this.assertGeoUnique({
+      table: pharmacyCities,
+      organizationId,
+      code: input.code,
+      name: input.name,
+      label: "City",
+    });
     const [row] = await this.db
       .insert(pharmacyCities)
       .values({
@@ -475,17 +573,25 @@ export class PharmacyErpService {
   }
 
   async listProvinces(organizationId: string) {
-    return this.db
+    const rows = await this.db
       .select()
       .from(pharmacyProvinces)
       .where(eq(pharmacyProvinces.organizationId, organizationId))
-      .orderBy(desc(pharmacyProvinces.createdAt));
+      .orderBy(asc(pharmacyProvinces.createdAt));
+    return this.dedupeGeoRows(pharmacyProvinces, rows, (r) => r.name);
   }
 
   async createProvince(organizationId: string, input: { code: string; name: string }) {
     if (!input.code?.trim() || !input.name?.trim()) {
       throw new BadRequestException("code and name are required");
     }
+    await this.assertGeoUnique({
+      table: pharmacyProvinces,
+      organizationId,
+      code: input.code,
+      name: input.name,
+      label: "Province",
+    });
     const [row] = await this.db
       .insert(pharmacyProvinces)
       .values({ organizationId, code: input.code.trim(), name: input.name.trim() })
@@ -495,11 +601,12 @@ export class PharmacyErpService {
   }
 
   async listDivisions(organizationId: string) {
-    return this.db
+    const rows = await this.db
       .select()
       .from(pharmacyDivisions)
       .where(eq(pharmacyDivisions.organizationId, organizationId))
-      .orderBy(desc(pharmacyDivisions.createdAt));
+      .orderBy(asc(pharmacyDivisions.createdAt));
+    return this.dedupeGeoRows(pharmacyDivisions, rows, (r) => `${r.provinceId}:${r.name}`);
   }
 
   async createDivision(
@@ -509,6 +616,14 @@ export class PharmacyErpService {
     if (!input.provinceId || !input.code?.trim() || !input.name?.trim()) {
       throw new BadRequestException("provinceId, code and name are required");
     }
+    await this.assertGeoUnique({
+      table: pharmacyDivisions,
+      organizationId,
+      code: input.code,
+      name: input.name,
+      label: "Division",
+      parentEq: eq(pharmacyDivisions.provinceId, input.provinceId),
+    });
     const [row] = await this.db
       .insert(pharmacyDivisions)
       .values({
@@ -523,11 +638,12 @@ export class PharmacyErpService {
   }
 
   async listDistricts(organizationId: string) {
-    return this.db
+    const rows = await this.db
       .select()
       .from(pharmacyDistricts)
       .where(eq(pharmacyDistricts.organizationId, organizationId))
-      .orderBy(desc(pharmacyDistricts.createdAt));
+      .orderBy(asc(pharmacyDistricts.createdAt));
+    return this.dedupeGeoRows(pharmacyDistricts, rows, (r) => `${r.divisionId}:${r.name}`);
   }
 
   async createDistrict(
@@ -537,6 +653,14 @@ export class PharmacyErpService {
     if (!input.divisionId || !input.code?.trim() || !input.name?.trim()) {
       throw new BadRequestException("divisionId, code and name are required");
     }
+    await this.assertGeoUnique({
+      table: pharmacyDistricts,
+      organizationId,
+      code: input.code,
+      name: input.name,
+      label: "District",
+      parentEq: eq(pharmacyDistricts.divisionId, input.divisionId),
+    });
     const [row] = await this.db
       .insert(pharmacyDistricts)
       .values({
@@ -551,11 +675,12 @@ export class PharmacyErpService {
   }
 
   async listGeoTerritories(organizationId: string) {
-    return this.db
+    const rows = await this.db
       .select()
       .from(pharmacyGeoTerritories)
       .where(eq(pharmacyGeoTerritories.organizationId, organizationId))
-      .orderBy(desc(pharmacyGeoTerritories.createdAt));
+      .orderBy(asc(pharmacyGeoTerritories.createdAt));
+    return this.dedupeGeoRows(pharmacyGeoTerritories, rows, (r) => `${r.areaId}:${r.name}`);
   }
 
   async createGeoTerritory(
@@ -565,6 +690,14 @@ export class PharmacyErpService {
     if (!input.areaId || !input.code?.trim() || !input.name?.trim()) {
       throw new BadRequestException("areaId, code and name are required");
     }
+    await this.assertGeoUnique({
+      table: pharmacyGeoTerritories,
+      organizationId,
+      code: input.code,
+      name: input.name,
+      label: "Territory",
+      parentEq: eq(pharmacyGeoTerritories.areaId, input.areaId),
+    });
     const [row] = await this.db
       .insert(pharmacyGeoTerritories)
       .values({
@@ -580,11 +713,12 @@ export class PharmacyErpService {
   }
 
   async listAreas(organizationId: string) {
-    return this.db
+    const rows = await this.db
       .select()
       .from(pharmacyAreas)
       .where(eq(pharmacyAreas.organizationId, organizationId))
-      .orderBy(desc(pharmacyAreas.createdAt));
+      .orderBy(asc(pharmacyAreas.createdAt));
+    return this.dedupeGeoRows(pharmacyAreas, rows, (r) => `${r.cityId}:${r.name}`);
   }
 
   async createArea(
@@ -601,6 +735,14 @@ export class PharmacyErpService {
     if (!input.cityId || !input.code?.trim() || !input.name?.trim()) {
       throw new BadRequestException("cityId, code and name are required");
     }
+    await this.assertGeoUnique({
+      table: pharmacyAreas,
+      organizationId,
+      code: input.code,
+      name: input.name,
+      label: "Area",
+      parentEq: eq(pharmacyAreas.cityId, input.cityId),
+    });
     const [row] = await this.db
       .insert(pharmacyAreas)
       .values({
@@ -618,11 +760,12 @@ export class PharmacyErpService {
   }
 
   async listRoutes(organizationId: string) {
-    return this.db
+    const rows = await this.db
       .select()
       .from(pharmacyRoutes)
       .where(eq(pharmacyRoutes.organizationId, organizationId))
-      .orderBy(desc(pharmacyRoutes.createdAt));
+      .orderBy(asc(pharmacyRoutes.createdAt));
+    return this.dedupeGeoRows(pharmacyRoutes, rows, (r) => `${r.areaId}:${r.name}`);
   }
 
   async createRoute(
@@ -640,6 +783,14 @@ export class PharmacyErpService {
     if (!input.areaId || !input.code?.trim() || !input.name?.trim()) {
       throw new BadRequestException("areaId, code and name are required");
     }
+    await this.assertGeoUnique({
+      table: pharmacyRoutes,
+      organizationId,
+      code: input.code,
+      name: input.name,
+      label: "Route",
+      parentEq: eq(pharmacyRoutes.areaId, input.areaId),
+    });
     const [row] = await this.db
       .insert(pharmacyRoutes)
       .values({
@@ -1291,16 +1442,92 @@ export class PharmacyErpService {
 
   async getDistOrder(organizationId: string, id: string) {
     const [order] = await this.db
-      .select()
+      .select({
+        id: pharmacyDistOrders.id,
+        organizationId: pharmacyDistOrders.organizationId,
+        branchId: pharmacyDistOrders.branchId,
+        warehouseId: pharmacyDistOrders.warehouseId,
+        orderNumber: pharmacyDistOrders.orderNumber,
+        tradeCustomerId: pharmacyDistOrders.tradeCustomerId,
+        salesmanEmployeeId: pharmacyDistOrders.salesmanEmployeeId,
+        status: pharmacyDistOrders.status,
+        paymentStatus: pharmacyDistOrders.paymentStatus,
+        deliveryStatus: pharmacyDistOrders.deliveryStatus,
+        subtotalPkr: pharmacyDistOrders.subtotalPkr,
+        discountPkr: pharmacyDistOrders.discountPkr,
+        taxPkr: pharmacyDistOrders.taxPkr,
+        totalPkr: pharmacyDistOrders.totalPkr,
+        creditOverride: pharmacyDistOrders.creditOverride,
+        creditOverrideReason: pharmacyDistOrders.creditOverrideReason,
+        notes: pharmacyDistOrders.notes,
+        bookedAt: pharmacyDistOrders.bookedAt,
+        approvedAt: pharmacyDistOrders.approvedAt,
+        invoicedAt: pharmacyDistOrders.invoicedAt,
+        createdAt: pharmacyDistOrders.createdAt,
+        branchName: popsBranches.name,
+        branchCode: popsBranches.code,
+        warehouseName: pharmacyWarehouses.name,
+        warehouseCode: pharmacyWarehouses.code,
+        customerName: pharmacyTradeCustomers.name,
+        customerCode: pharmacyTradeCustomers.code,
+        customerPhone: pharmacyTradeCustomers.phone,
+        customerAddress: pharmacyTradeCustomers.address,
+        salesmanName: popsEmployees.displayName,
+      })
       .from(pharmacyDistOrders)
+      .leftJoin(popsBranches, eq(popsBranches.id, pharmacyDistOrders.branchId))
+      .leftJoin(pharmacyWarehouses, eq(pharmacyWarehouses.id, pharmacyDistOrders.warehouseId))
+      .leftJoin(pharmacyTradeCustomers, eq(pharmacyTradeCustomers.id, pharmacyDistOrders.tradeCustomerId))
+      .leftJoin(popsEmployees, eq(popsEmployees.id, pharmacyDistOrders.salesmanEmployeeId))
       .where(and(eq(pharmacyDistOrders.id, id), eq(pharmacyDistOrders.organizationId, organizationId)))
       .limit(1);
     if (!order) throw new NotFoundException("Distribution order not found");
+
     const lines = await this.db
-      .select()
+      .select({
+        id: pharmacyDistOrderLines.id,
+        medicineId: pharmacyDistOrderLines.medicineId,
+        quantity: pharmacyDistOrderLines.quantity,
+        freeQuantity: pharmacyDistOrderLines.freeQuantity,
+        unitPricePkr: pharmacyDistOrderLines.unitPricePkr,
+        discountPkr: pharmacyDistOrderLines.discountPkr,
+        lineTotalPkr: pharmacyDistOrderLines.lineTotalPkr,
+        medicineName: pharmacyMedicines.name,
+        medicineSku: pharmacyMedicines.sku,
+        tabletsPerStrip: pharmacyMedicines.tabletsPerStrip,
+        stripsPerBox: pharmacyMedicines.stripsPerBox,
+        unit: pharmacyMedicines.unit,
+        companyName: pharmacyCompanies.name,
+      })
       .from(pharmacyDistOrderLines)
+      .leftJoin(pharmacyMedicines, eq(pharmacyMedicines.id, pharmacyDistOrderLines.medicineId))
+      .leftJoin(pharmacyCompanies, eq(pharmacyCompanies.id, pharmacyMedicines.companyId))
       .where(eq(pharmacyDistOrderLines.orderId, id));
-    return { ...order, lines };
+
+    const paymentMethod = decodeDistPaymentMethod(order.notes);
+
+    const [invoice] = await this.db
+      .select({
+        invoiceNumber: pharmacyDistInvoices.invoiceNumber,
+        invoiceId: pharmacyDistInvoices.id,
+      })
+      .from(pharmacyDistInvoices)
+      .where(
+        and(
+          eq(pharmacyDistInvoices.orderId, id),
+          eq(pharmacyDistInvoices.organizationId, organizationId),
+        ),
+      )
+      .orderBy(desc(pharmacyDistInvoices.createdAt))
+      .limit(1);
+
+    return {
+      ...order,
+      paymentMethod,
+      invoiceNumber: invoice?.invoiceNumber ?? null,
+      invoiceId: invoice?.invoiceId ?? null,
+      lines,
+    };
   }
 
   async approveDistOrder(organizationId: string, id: string) {
@@ -1495,21 +1722,12 @@ export class PharmacyErpService {
   // ─── Deliveries ──────────────────────────────────────────────────────────
 
   async listDeliveries(organizationId: string, branchCode?: string) {
-    if (branchCode) {
-      const branch = await this.resolveBranch(organizationId, branchCode);
-      return this.db
-        .select()
-        .from(pharmacyDeliveries)
-        .where(
-          and(eq(pharmacyDeliveries.organizationId, organizationId), eq(pharmacyDeliveries.branchId, branch.id)),
-        )
-        .orderBy(desc(pharmacyDeliveries.createdAt));
-    }
-    return this.db
-      .select()
-      .from(pharmacyDeliveries)
-      .where(eq(pharmacyDeliveries.organizationId, organizationId))
-      .orderBy(desc(pharmacyDeliveries.createdAt));
+    const result = await this.deliveriesSvc.list(organizationId, {
+      branchCode,
+      page: 1,
+      pageSize: 500,
+    });
+    return result.items;
   }
 
   /** Legacy — delegates to Phase 7 DeliveryService (year+seq numbering). Prefer `/v1/pharmacy/delivery/orders`. */

@@ -8,6 +8,7 @@ import {
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 import type { CloseDayResult, ClosingStatus, ClosingZReport } from "@platform/contracts";
 import {
+  organizations,
   popsBills,
   popsBranchClosingState,
   popsBranches,
@@ -24,6 +25,11 @@ import { SecurityService } from "../security/security.service";
 
 type PaymentLine = { method: string; amount: number };
 
+function isWholesaleSystem(systemType: string | null | undefined): boolean {
+  const t = (systemType ?? "").toLowerCase().replace(/-/g, "_");
+  return t === "distribution" || t === "pharmacy";
+}
+
 @Injectable()
 export class ClosingService {
   constructor(
@@ -32,14 +38,27 @@ export class ClosingService {
     @Inject(forwardRef(() => SecurityService)) private readonly security: SecurityService,
   ) {}
 
+  private async resolveSystemType(organizationId: string): Promise<string> {
+    const [org] = await this.db
+      .select({ systemType: organizations.systemType })
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+      .limit(1);
+    return org?.systemType ?? "restaurant";
+  }
+
   async getStatus(organizationId: string, branchCode: string): Promise<ClosingStatus> {
     const branch = await this.resolveBranch(organizationId, branchCode);
     const state = await this.ensureClosingState(organizationId, branch.id);
     const businessDate = state.businessDate;
+    const systemType = await this.resolveSystemType(organizationId);
+    const wholesale = isWholesaleSystem(systemType);
 
     const [bills, tickets, sessions, dashboard, plReport] = await Promise.all([
       this.db.select().from(popsBills).where(eq(popsBills.branchId, branch.id)),
-      this.db.select().from(popsKitchenTickets).where(eq(popsKitchenTickets.branchId, branch.id)),
+      wholesale
+        ? Promise.resolve([])
+        : this.db.select().from(popsKitchenTickets).where(eq(popsKitchenTickets.branchId, branch.id)),
       this.db
         .select()
         .from(popsCashSessions)
@@ -68,59 +87,113 @@ export class ClosingService {
 
     const s1Done = state.ordersPaused;
     const s2Done = !openSessionRow && (closedSessionsToday.length > 0 || sessions.length === 0);
-    const s3Done = openKitchen.length === 0;
+    // Distribution / pharmacy: no kitchen KOTs — treat dispatch step as clear.
+    const s3Done = wholesale ? true : openKitchen.length === 0;
     const s4Done = Boolean(zReportOnBusinessDay);
     const s5Done = Boolean(backupOnBusinessDay);
 
-    const checklist = [
-      {
-        id: "s1",
-        label: "Stop new orders / handover to night",
-        done: s1Done,
-        hint: s1Done
-          ? "New POS and kitchen orders are blocked."
-          : heldOrders.length > 0
-            ? `${heldOrders.length} held/open bill(s) still active.`
-            : "Pause new orders before closing.",
-      },
-      {
-        id: "s2",
-        label: "Reconcile cash & card terminals",
-        done: s2Done,
-        hint: openSessionRow
-          ? `Close cash session ${openSessionRow.sessionRef} with counted cash.`
-          : closedSessionsToday.length === 0 && sessions.length > 0
-            ? "No shift closed today — close the open cash session."
-            : closedSessionsToday.length > 0
-              ? `${closedSessionsToday.length} session(s) reconciled today.`
-              : "No cash sessions — reconciliation not required.",
-      },
-      {
-        id: "s3",
-        label: "Close kitchen & void open KOTs",
-        done: s3Done,
-        hint: openKitchen.length > 0 ? `${openKitchen.length} open KOT(s) remaining.` : "Kitchen clear.",
-      },
-      {
-        id: "s4",
-        label: "Run Z-report & PRA queue flush",
-        done: s4Done,
-        hint: s4Done ? `Z-report ${state.lastZReportRef ?? ""} generated.` : "Generate today's Z-report.",
-      },
-      {
-        id: "s5",
-        label: "Verify backup completed",
-        done: s5Done,
-        hint: s5Done ? `Backup ${state.lastBackupRef ?? ""} verified.` : "Run end-of-day backup snapshot.",
-      },
-    ];
+    const checklist = wholesale
+      ? [
+          {
+            id: "s1",
+            label: "Stop new bookings / handover to night",
+            done: s1Done,
+            hint: s1Done
+              ? "New Sale Window bookings are paused."
+              : heldOrders.length > 0
+                ? `${heldOrders.length} held/open booking(s) still active.`
+                : "Pause new bookings before closing.",
+          },
+          {
+            id: "s2",
+            label: "Reconcile cash & collections",
+            done: s2Done,
+            hint: openSessionRow
+              ? `Close cash session ${openSessionRow.sessionRef} with counted cash.`
+              : closedSessionsToday.length === 0 && sessions.length > 0
+                ? "No shift closed today — close the open cash session."
+                : closedSessionsToday.length > 0
+                  ? `${closedSessionsToday.length} session(s) reconciled today.`
+                  : "No cash sessions — reconciliation not required.",
+          },
+          {
+            id: "s3",
+            label: "Confirm warehouse / dispatch queue clear",
+            done: s3Done,
+            hint: "No open packing or kitchen tickets for this branch.",
+          },
+          {
+            id: "s4",
+            label: "Run Z-report & day sales summary",
+            done: s4Done,
+            hint: s4Done
+              ? `Z-report ${state.lastZReportRef ?? ""} generated.`
+              : "Generate today's distribution Z-report.",
+          },
+          {
+            id: "s5",
+            label: "Verify backup completed",
+            done: s5Done,
+            hint: s5Done
+              ? `Backup ${state.lastBackupRef ?? ""} verified.`
+              : "Run end-of-day backup snapshot.",
+          },
+        ]
+      : [
+          {
+            id: "s1",
+            label: "Stop new orders / handover to night",
+            done: s1Done,
+            hint: s1Done
+              ? "New POS and kitchen orders are blocked."
+              : heldOrders.length > 0
+                ? `${heldOrders.length} held/open bill(s) still active.`
+                : "Pause new orders before closing.",
+          },
+          {
+            id: "s2",
+            label: "Reconcile cash & card terminals",
+            done: s2Done,
+            hint: openSessionRow
+              ? `Close cash session ${openSessionRow.sessionRef} with counted cash.`
+              : closedSessionsToday.length === 0 && sessions.length > 0
+                ? "No shift closed today — close the open cash session."
+                : closedSessionsToday.length > 0
+                  ? `${closedSessionsToday.length} session(s) reconciled today.`
+                  : "No cash sessions — reconciliation not required.",
+          },
+          {
+            id: "s3",
+            label: "Close kitchen & void open KOTs",
+            done: s3Done,
+            hint: openKitchen.length > 0 ? `${openKitchen.length} open KOT(s) remaining.` : "Kitchen clear.",
+          },
+          {
+            id: "s4",
+            label: "Run Z-report & PRA queue flush",
+            done: s4Done,
+            hint: s4Done ? `Z-report ${state.lastZReportRef ?? ""} generated.` : "Generate today's Z-report.",
+          },
+          {
+            id: "s5",
+            label: "Verify backup completed",
+            done: s5Done,
+            hint: s5Done ? `Backup ${state.lastBackupRef ?? ""} verified.` : "Run end-of-day backup snapshot.",
+          },
+        ];
 
     const blockers: string[] = [];
-    if (!s1Done) blockers.push("Pause new orders");
-    if (heldOrders.length > 0) blockers.push(`${heldOrders.length} held/open bill(s) must be settled`);
+    if (!s1Done) blockers.push(wholesale ? "Pause new bookings" : "Pause new orders");
+    if (heldOrders.length > 0) {
+      blockers.push(
+        wholesale
+          ? `${heldOrders.length} held/open booking(s) must be settled`
+          : `${heldOrders.length} held/open bill(s) must be settled`,
+      );
+    }
     if (openSessionRow) blockers.push(`Cash session ${openSessionRow.sessionRef} is still open`);
     if (!s2Done) blockers.push("Cash session must be reconciled before closing day");
-    if (!s3Done) blockers.push(`${openKitchen.length} kitchen ticket(s) still open`);
+    if (!s3Done && !wholesale) blockers.push(`${openKitchen.length} kitchen ticket(s) still open`);
     if (!s4Done) blockers.push("Z-report not run for today");
     if (!s5Done) blockers.push("Backup not verified for today");
 
@@ -217,6 +290,12 @@ export class ClosingService {
   }
 
   async closeKitchen(organizationId: string, branchCode: string, userEmail: string) {
+    const systemType = await this.resolveSystemType(organizationId);
+    if (isWholesaleSystem(systemType)) {
+      // Distribution / pharmacy day-close has no kitchen KOTs.
+      return this.getStatus(organizationId, branchCode);
+    }
+
     const branch = await this.resolveBranch(organizationId, branchCode);
     const openTickets = await this.db
       .select()
@@ -248,6 +327,7 @@ export class ClosingService {
     const branch = await this.resolveBranch(organizationId, branchCode);
     const state = await this.ensureClosingState(organizationId, branch.id);
     const businessDate = state.businessDate;
+    const wholesale = isWholesaleSystem(await this.resolveSystemType(organizationId));
 
     const bills = await this.db
       .select()
@@ -311,7 +391,9 @@ export class ClosingService {
       eventType: "closing",
       userEmail,
       action: "z_report",
-      detail: `${reportRef}: ${zReport.orderCount} orders, Rs ${zReport.totalSales}, PRA queue ${praQueueFlushed} invoice(s) flushed`,
+      detail: wholesale
+        ? `${reportRef}: ${zReport.orderCount} sales, Rs ${zReport.totalSales}, tax lines ${praQueueFlushed}`
+        : `${reportRef}: ${zReport.orderCount} orders, Rs ${zReport.totalSales}, PRA queue ${praQueueFlushed} invoice(s) flushed`,
     });
 
     return { zReport, status: await this.getStatus(organizationId, branchCode) };

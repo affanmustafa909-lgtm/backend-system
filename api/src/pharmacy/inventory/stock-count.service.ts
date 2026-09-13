@@ -466,7 +466,17 @@ export class StockCountService {
       );
     }
     if (!candidates.length) {
-      throw new BadRequestException("No stock matches this scope, so there is nothing to count");
+      const bits: string[] = [];
+      if (scope?.companyId) bits.push("company");
+      if (scope?.categoryId || scope?.category) bits.push("category");
+      if (scope?.rackLocation?.trim()) bits.push(`rack containing “${scope.rackLocation.trim()}”`);
+      if (scope?.medicineIds?.length) bits.push(`${scope.medicineIds.length} selected product(s)`);
+      const scopeHint = bits.length
+        ? ` Active filters: ${bits.join(", ")}.`
+        : " No cycle filters were set — this warehouse has no non-zero batches.";
+      throw new BadRequestException(
+        `No stock matches this scope, so there is nothing to count.${scopeHint} Clear rack/category/company (or pick Full count), and make sure products have qty in this warehouse.`,
+      );
     }
 
     const countId = await this.numbering.withNumber(organizationId, "count", async (countNumber) =>

@@ -1289,7 +1289,10 @@ export class InventoryService {
       .groupBy(pharmacyStockMovements.medicineId)
       .as("ledger_net");
 
-    const batchSumExpr = sql<number>`coalesce(sum(${pharmacyMedicineBatches.quantity}), 0)`;
+    const activeBatch = sql`lower(coalesce(${pharmacyMedicineBatches.status}, 'active')) = 'active'`;
+    const unexpiredBatch = sql`${pharmacyMedicineBatches.expiryDate} >= current_date`;
+    // Matches pharmacy_medicines.currentStock cache (sellable availableQty)
+    const batchSumExpr = sql<number>`coalesce(sum(case when ${activeBatch} and ${unexpiredBatch} then ${pharmacyMedicineBatches.quantity} else 0 end), 0)`;
     const physicalSumExpr = sql<number>`coalesce(sum(
       ${pharmacyMedicineBatches.quantity}
       + ${pharmacyMedicineBatches.reservedQuantity}
@@ -1358,7 +1361,7 @@ export class InventoryService {
       const notes: string[] = [];
       if (cacheDrift !== 0) {
         notes.push(
-          `currentStock cache is off by ${cacheDrift} against the sum of batch quantities`,
+          `currentStock cache is off by ${cacheDrift} against sellable batch quantity (active + unexpired)`,
         );
       }
       if (ledgerDrift !== 0) {
@@ -1541,7 +1544,7 @@ export class InventoryService {
         severity: "warning",
         count: cacheDrift.count,
         description:
-          "Products whose currentStock cache disagrees with the sum of their batch quantities. Batch quantities are authoritative.",
+          "Products whose currentStock cache disagrees with sellable batch quantity (active + unexpired). Batch rows are authoritative.",
         sampleIds: cacheDrift.sampleIds,
       },
       {

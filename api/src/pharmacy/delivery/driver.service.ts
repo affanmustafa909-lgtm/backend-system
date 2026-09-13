@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { and, count, desc, eq, ilike, or, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import {
   pharmacyDrivers,
   pharmacyVehicles,
@@ -44,8 +44,13 @@ export class DriverService {
     const branch = await this.resolveBranch(organizationId, filters.branchCode);
 
     const conds: SQL[] = [eq(pharmacyDrivers.organizationId, organizationId)];
-    if (branch) conds.push(eq(pharmacyDrivers.branchId, branch.id));
+    if (branch) {
+      conds.push(
+        or(eq(pharmacyDrivers.branchId, branch.id), sql`${pharmacyDrivers.branchId} is null`)!,
+      );
+    }
     if (filters.status?.trim()) conds.push(eq(pharmacyDrivers.status, filters.status.trim()));
+    else conds.push(eq(pharmacyDrivers.status, "active"));
     if (filters.q?.trim()) {
       const q = `%${filters.q.trim()}%`;
       conds.push(or(ilike(pharmacyDrivers.name, q), ilike(pharmacyDrivers.code, q), ilike(pharmacyDrivers.phone, q))!);

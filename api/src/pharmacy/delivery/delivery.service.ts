@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { and, count, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import {
   pharmacyDeliveryLines,
   pharmacyDeliveries,
@@ -16,6 +17,7 @@ import {
   pharmacyDrivers,
   pharmacyMedicineBatches,
   pharmacyMedicines,
+  pharmacyRoutes,
   pharmacyTradeCustomers,
   pharmacyVehicles,
   popsBranches,
@@ -23,6 +25,10 @@ import {
 } from "@platform/database-pg";
 import { DRIZZLE } from "../../drizzle/drizzle.tokens";
 import { DeliveryNumberingService } from "./delivery-numbering.service";
+
+const deliveryCustomer = alias(pharmacyTradeCustomers, "delivery_customer");
+const orderCustomer = alias(pharmacyTradeCustomers, "order_customer");
+const invoiceCustomer = alias(pharmacyTradeCustomers, "invoice_customer");
 
 export type DeliveryListFilters = {
   branchCode?: string;
@@ -116,6 +122,63 @@ export class DeliveryService {
     await tx.update(pharmacyDistOrders).set(patch).where(eq(pharmacyDistOrders.id, orderId));
   }
 
+  private enrichDeliverySelect() {
+    return {
+      id: pharmacyDeliveries.id,
+      organizationId: pharmacyDeliveries.organizationId,
+      branchId: pharmacyDeliveries.branchId,
+      deliveryNumber: pharmacyDeliveries.deliveryNumber,
+      orderId: pharmacyDeliveries.orderId,
+      invoiceId: pharmacyDeliveries.invoiceId,
+      tradeCustomerId: pharmacyDeliveries.tradeCustomerId,
+      riderName: pharmacyDeliveries.riderName,
+      driverId: pharmacyDeliveries.driverId,
+      vehicleId: pharmacyDeliveries.vehicleId,
+      warehouseId: pharmacyDeliveries.warehouseId,
+      routeId: pharmacyDeliveries.routeId,
+      priority: pharmacyDeliveries.priority,
+      address: pharmacyDeliveries.address,
+      contactName: pharmacyDeliveries.contactName,
+      contactPhone: pharmacyDeliveries.contactPhone,
+      receiverName: pharmacyDeliveries.receiverName,
+      signatureRef: pharmacyDeliveries.signatureRef,
+      photoRef: pharmacyDeliveries.photoRef,
+      refusalReason: pharmacyDeliveries.refusalReason,
+      status: pharmacyDeliveries.status,
+      failedReason: pharmacyDeliveries.failedReason,
+      podNotes: pharmacyDeliveries.podNotes,
+      collectedPkr: pharmacyDeliveries.collectedPkr,
+      idempotencyKey: pharmacyDeliveries.idempotencyKey,
+      dispatchedAt: pharmacyDeliveries.dispatchedAt,
+      outForDeliveryAt: pharmacyDeliveries.outForDeliveryAt,
+      deliveredAt: pharmacyDeliveries.deliveredAt,
+      createdAt: pharmacyDeliveries.createdAt,
+      orderNumber: pharmacyDistOrders.orderNumber,
+      invoiceNumber: pharmacyDistInvoices.invoiceNumber,
+      orderTotalPkr: pharmacyDistOrders.totalPkr,
+      invoiceTotalPkr: pharmacyDistInvoices.totalPkr,
+      branchName: popsBranches.name,
+      branchCode: popsBranches.code,
+      tradeCustomerName: sql<string>`coalesce(
+        ${deliveryCustomer.name},
+        ${orderCustomer.name},
+        ${invoiceCustomer.name},
+        ${pharmacyDeliveries.contactName}
+      )`.as("trade_customer_name"),
+      tradeCustomerCode: sql<string>`coalesce(
+        ${deliveryCustomer.code},
+        ${orderCustomer.code},
+        ${invoiceCustomer.code}
+      )`.as("trade_customer_code"),
+      driverName: pharmacyDrivers.name,
+      routeName: sql<string>`coalesce(${pharmacyRoutes.name}, ${pharmacyRoutes.code})`.as("route_name"),
+      routeCode: pharmacyRoutes.code,
+      vehicleLabel: sql<string>`coalesce(${pharmacyVehicles.registrationNo}, ${pharmacyVehicles.code})`.as(
+        "vehicle_label",
+      ),
+    };
+  }
+
   async list(organizationId: string, filters: DeliveryListFilters = {}) {
     const page = Math.max(1, filters.page ?? 1);
     const pageSize = Math.min(100, Math.max(1, filters.pageSize ?? 25));
@@ -143,15 +206,46 @@ export class DeliveryService {
           ilike(pharmacyDeliveries.address, q),
           ilike(pharmacyDeliveries.contactName, q),
           ilike(pharmacyDeliveries.riderName, q),
+          ilike(pharmacyDistOrders.orderNumber, q),
+          ilike(pharmacyDistInvoices.invoiceNumber, q),
+          ilike(deliveryCustomer.name, q),
+          ilike(orderCustomer.name, q),
+          ilike(invoiceCustomer.name, q),
+          ilike(pharmacyDrivers.name, q),
+          ilike(pharmacyRoutes.name, q),
+          ilike(pharmacyRoutes.code, q),
         )!,
       );
     }
     const where = and(...conds);
 
-    const [totalRow] = await this.db.select({ n: count() }).from(pharmacyDeliveries).where(where);
-    const items = await this.db
-      .select()
+    const baseFrom = this.db
+      .select({ n: count() })
       .from(pharmacyDeliveries)
+      .leftJoin(pharmacyDistOrders, eq(pharmacyDistOrders.id, pharmacyDeliveries.orderId))
+      .leftJoin(pharmacyDistInvoices, eq(pharmacyDistInvoices.id, pharmacyDeliveries.invoiceId))
+      .leftJoin(deliveryCustomer, eq(deliveryCustomer.id, pharmacyDeliveries.tradeCustomerId))
+      .leftJoin(orderCustomer, eq(orderCustomer.id, pharmacyDistOrders.tradeCustomerId))
+      .leftJoin(invoiceCustomer, eq(invoiceCustomer.id, pharmacyDistInvoices.tradeCustomerId))
+      .leftJoin(pharmacyDrivers, eq(pharmacyDrivers.id, pharmacyDeliveries.driverId))
+      .leftJoin(pharmacyRoutes, eq(pharmacyRoutes.id, pharmacyDeliveries.routeId))
+      .leftJoin(pharmacyVehicles, eq(pharmacyVehicles.id, pharmacyDeliveries.vehicleId))
+      .leftJoin(popsBranches, eq(popsBranches.id, pharmacyDeliveries.branchId))
+      .where(where);
+
+    const [totalRow] = await baseFrom;
+    const items = await this.db
+      .select(this.enrichDeliverySelect())
+      .from(pharmacyDeliveries)
+      .leftJoin(pharmacyDistOrders, eq(pharmacyDistOrders.id, pharmacyDeliveries.orderId))
+      .leftJoin(pharmacyDistInvoices, eq(pharmacyDistInvoices.id, pharmacyDeliveries.invoiceId))
+      .leftJoin(deliveryCustomer, eq(deliveryCustomer.id, pharmacyDeliveries.tradeCustomerId))
+      .leftJoin(orderCustomer, eq(orderCustomer.id, pharmacyDistOrders.tradeCustomerId))
+      .leftJoin(invoiceCustomer, eq(invoiceCustomer.id, pharmacyDistInvoices.tradeCustomerId))
+      .leftJoin(pharmacyDrivers, eq(pharmacyDrivers.id, pharmacyDeliveries.driverId))
+      .leftJoin(pharmacyRoutes, eq(pharmacyRoutes.id, pharmacyDeliveries.routeId))
+      .leftJoin(pharmacyVehicles, eq(pharmacyVehicles.id, pharmacyDeliveries.vehicleId))
+      .leftJoin(popsBranches, eq(popsBranches.id, pharmacyDeliveries.branchId))
       .where(where)
       .orderBy(desc(pharmacyDeliveries.createdAt))
       .limit(pageSize)
@@ -162,16 +256,135 @@ export class DeliveryService {
 
   async getById(organizationId: string, id: string) {
     const [row] = await this.db
-      .select()
+      .select(this.enrichDeliverySelect())
       .from(pharmacyDeliveries)
+      .leftJoin(pharmacyDistOrders, eq(pharmacyDistOrders.id, pharmacyDeliveries.orderId))
+      .leftJoin(pharmacyDistInvoices, eq(pharmacyDistInvoices.id, pharmacyDeliveries.invoiceId))
+      .leftJoin(deliveryCustomer, eq(deliveryCustomer.id, pharmacyDeliveries.tradeCustomerId))
+      .leftJoin(orderCustomer, eq(orderCustomer.id, pharmacyDistOrders.tradeCustomerId))
+      .leftJoin(invoiceCustomer, eq(invoiceCustomer.id, pharmacyDistInvoices.tradeCustomerId))
+      .leftJoin(pharmacyDrivers, eq(pharmacyDrivers.id, pharmacyDeliveries.driverId))
+      .leftJoin(pharmacyRoutes, eq(pharmacyRoutes.id, pharmacyDeliveries.routeId))
+      .leftJoin(pharmacyVehicles, eq(pharmacyVehicles.id, pharmacyDeliveries.vehicleId))
+      .leftJoin(popsBranches, eq(popsBranches.id, pharmacyDeliveries.branchId))
       .where(and(eq(pharmacyDeliveries.id, id), eq(pharmacyDeliveries.organizationId, organizationId)))
       .limit(1);
     if (!row) throw new NotFoundException("Delivery not found");
-    const lines = await this.db
-      .select()
+
+    let lines = await this.db
+      .select({
+        id: pharmacyDeliveryLines.id,
+        medicineId: pharmacyDeliveryLines.medicineId,
+        productLabel: pharmacyDeliveryLines.productLabel,
+        medicineName: pharmacyMedicines.name,
+        medicineSku: pharmacyMedicines.sku,
+        batchId: pharmacyDeliveryLines.batchId,
+        batchNumber: pharmacyDeliveryLines.batchNumber,
+        quantity: pharmacyDeliveryLines.quantity,
+        deliveredQty: pharmacyDeliveryLines.deliveredQty,
+        returnedQty: pharmacyDeliveryLines.returnedQty,
+        notes: pharmacyDeliveryLines.notes,
+      })
       .from(pharmacyDeliveryLines)
+      .leftJoin(pharmacyMedicines, eq(pharmacyMedicines.id, pharmacyDeliveryLines.medicineId))
       .where(eq(pharmacyDeliveryLines.deliveryId, id));
-    return { ...row, lines };
+
+    const priceByMedicine = new Map<string, number>();
+    if (row.invoiceId) {
+      const prices = await this.db
+        .select({
+          medicineId: pharmacyDistInvoiceLines.medicineId,
+          unitPricePkr: pharmacyDistInvoiceLines.unitPricePkr,
+        })
+        .from(pharmacyDistInvoiceLines)
+        .where(eq(pharmacyDistInvoiceLines.invoiceId, row.invoiceId));
+      for (const p of prices) {
+        if (p.medicineId && !priceByMedicine.has(p.medicineId)) {
+          priceByMedicine.set(p.medicineId, Number(p.unitPricePkr ?? 0));
+        }
+      }
+    } else if (row.orderId) {
+      const prices = await this.db
+        .select({
+          medicineId: pharmacyDistOrderLines.medicineId,
+          unitPricePkr: pharmacyDistOrderLines.unitPricePkr,
+        })
+        .from(pharmacyDistOrderLines)
+        .where(eq(pharmacyDistOrderLines.orderId, row.orderId));
+      for (const p of prices) {
+        if (p.medicineId && !priceByMedicine.has(p.medicineId)) {
+          priceByMedicine.set(p.medicineId, Number(p.unitPricePkr ?? 0));
+        }
+      }
+    }
+
+    let mappedLines = lines.map((l) => ({
+      ...l,
+      unitPricePkr: l.medicineId ? priceByMedicine.get(l.medicineId) ?? 0 : 0,
+    }));
+
+    // Older tickets may have no snapshot lines — fall back to order / invoice lines for print/UI.
+    if (!mappedLines.length && row.invoiceId) {
+      const invLines = await this.db
+        .select({
+          medicineId: pharmacyDistInvoiceLines.medicineId,
+          medicineName: pharmacyMedicines.name,
+          medicineSku: pharmacyMedicines.sku,
+          batchId: pharmacyDistInvoiceLines.batchId,
+          batchNumber: pharmacyMedicineBatches.batchNumber,
+          quantity: pharmacyDistInvoiceLines.quantity,
+          unitPricePkr: pharmacyDistInvoiceLines.unitPricePkr,
+        })
+        .from(pharmacyDistInvoiceLines)
+        .leftJoin(pharmacyMedicines, eq(pharmacyMedicines.id, pharmacyDistInvoiceLines.medicineId))
+        .leftJoin(pharmacyMedicineBatches, eq(pharmacyMedicineBatches.id, pharmacyDistInvoiceLines.batchId))
+        .where(eq(pharmacyDistInvoiceLines.invoiceId, row.invoiceId));
+      mappedLines = invLines.map((l, i) => ({
+        id: `inv-${i}`,
+        medicineId: l.medicineId,
+        productLabel: l.medicineName,
+        medicineName: l.medicineName,
+        medicineSku: l.medicineSku,
+        batchId: l.batchId,
+        batchNumber: l.batchNumber,
+        quantity: l.quantity,
+        deliveredQty: 0,
+        returnedQty: 0,
+        notes: null as string | null,
+        unitPricePkr: Number(l.unitPricePkr ?? 0),
+      }));
+    } else if (!mappedLines.length && row.orderId) {
+      const orderLines = await this.db
+        .select({
+          medicineId: pharmacyDistOrderLines.medicineId,
+          medicineName: pharmacyMedicines.name,
+          medicineSku: pharmacyMedicines.sku,
+          batchId: pharmacyDistOrderLines.batchId,
+          batchNumber: pharmacyMedicineBatches.batchNumber,
+          quantity: pharmacyDistOrderLines.quantity,
+          unitPricePkr: pharmacyDistOrderLines.unitPricePkr,
+        })
+        .from(pharmacyDistOrderLines)
+        .leftJoin(pharmacyMedicines, eq(pharmacyMedicines.id, pharmacyDistOrderLines.medicineId))
+        .leftJoin(pharmacyMedicineBatches, eq(pharmacyMedicineBatches.id, pharmacyDistOrderLines.batchId))
+        .where(eq(pharmacyDistOrderLines.orderId, row.orderId));
+      mappedLines = orderLines.map((l, i) => ({
+        id: `ord-${i}`,
+        medicineId: l.medicineId,
+        productLabel: l.medicineName,
+        medicineName: l.medicineName,
+        medicineSku: l.medicineSku,
+        batchId: l.batchId,
+        batchNumber: l.batchNumber,
+        quantity: l.quantity,
+        deliveredQty: 0,
+        returnedQty: 0,
+        notes: null as string | null,
+        unitPricePkr: Number(l.unitPricePkr ?? 0),
+      }));
+    }
+
+    return { ...row, lines: mappedLines };
   }
 
   private async insertLinesFromInvoice(
@@ -249,6 +462,7 @@ export class DeliveryService {
       address?: string;
       contactName?: string;
       contactPhone?: string;
+      riderName?: string;
       idempotencyKey?: string;
     },
   ) {
@@ -293,6 +507,7 @@ export class DeliveryService {
           orderId: inv.orderId,
           invoiceId: inv.id,
           tradeCustomerId: inv.tradeCustomerId,
+          riderName: input.riderName ?? null,
           driverId: input.driverId ?? null,
           vehicleId: input.vehicleId ?? null,
           routeId: input.routeId ?? null,
@@ -325,6 +540,7 @@ export class DeliveryService {
       address?: string;
       contactName?: string;
       contactPhone?: string;
+      riderName?: string;
       idempotencyKey?: string;
     },
   ) {
@@ -381,6 +597,7 @@ export class DeliveryService {
           orderId: order.id,
           invoiceId,
           tradeCustomerId: order.tradeCustomerId,
+          riderName: input.riderName ?? null,
           driverId: input.driverId ?? null,
           vehicleId: input.vehicleId ?? null,
           routeId: input.routeId ?? null,
@@ -435,6 +652,7 @@ export class DeliveryService {
         address: input.address,
         contactName: input.contactName,
         contactPhone: input.contactPhone,
+        riderName: input.riderName,
         idempotencyKey: input.idempotencyKey,
       });
     }
@@ -450,6 +668,7 @@ export class DeliveryService {
         address: input.address,
         contactName: input.contactName,
         contactPhone: input.contactPhone,
+        riderName: input.riderName,
         idempotencyKey: input.idempotencyKey,
       });
     }
