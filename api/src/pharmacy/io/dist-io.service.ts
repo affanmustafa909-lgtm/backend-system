@@ -98,22 +98,14 @@ export class DistIoService {
   template(module: string) {
     const mod = this.requireModule(module);
     const fields = FIELDS[mod];
+    // Clean header + example only — Excel treats first row as columns.
     const header = fields.map((f) => f.label).join(",");
     const example = fields.map((f) => csvCell(f.example)).join(",");
-    const instructions = [
-      "# Dist import template",
-      `# Module: ${mod}`,
-      "# Required columns are marked * in the field list below.",
-      ...fields.map((f) => `# ${f.required ? "*" : " "}${f.label} (${f.key}) example=${f.example}${f.notes ? ` — ${f.notes}` : ""}`),
-      "# Delete instruction lines (starting with #) before import, or they will be skipped.",
-      header,
-      example,
-    ].join("\r\n");
     return {
       module: mod,
       filename: `${mod}-import-template.csv`,
       contentType: "text/csv; charset=utf-8",
-      csv: instructions,
+      csv: `${header}\r\n${example}\r\n`,
       fields,
     };
   }
