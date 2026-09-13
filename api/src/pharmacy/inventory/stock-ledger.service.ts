@@ -268,12 +268,16 @@ export class StockLedgerService {
     const enriched = await this.attachReferenceLabels(organizationId, rows);
 
     return {
-      items: enriched.map((r) => ({
-        ...r,
-        movementType: normalizeMovementType(r.movementType),
-        rawMovementType: r.movementType,
-        direction: movementDirection(r.quantityDelta),
-      })),
+      items: enriched.map((r) => {
+        const movementType = String((r as { movementType?: unknown }).movementType ?? "");
+        const quantityDelta = Number((r as { quantityDelta?: unknown }).quantityDelta ?? 0);
+        return {
+          ...r,
+          movementType: normalizeMovementType(movementType),
+          rawMovementType: movementType,
+          direction: movementDirection(quantityDelta),
+        };
+      }),
       page,
       pageSize,
       total,

@@ -1487,6 +1487,7 @@ export class PharmacyErpService {
       .select({
         id: pharmacyDistOrderLines.id,
         medicineId: pharmacyDistOrderLines.medicineId,
+        batchId: pharmacyDistOrderLines.batchId,
         quantity: pharmacyDistOrderLines.quantity,
         freeQuantity: pharmacyDistOrderLines.freeQuantity,
         unitPricePkr: pharmacyDistOrderLines.unitPricePkr,
