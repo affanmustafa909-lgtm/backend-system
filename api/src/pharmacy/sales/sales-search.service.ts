@@ -26,6 +26,8 @@ export type LeanSaleProduct = {
   strength: string | null;
   wholesalePricePkr: number;
   sellingPricePkr: number;
+  tabletsPerStrip: number;
+  stripsPerBox: number;
   availableQty: number;
   nearExpiry: boolean;
 };
@@ -143,6 +145,8 @@ export class SalesSearchService {
         strength: pharmacyMedicines.dosageStrength,
         wholesalePricePkr: pharmacyMedicines.wholesalePricePkr,
         sellingPricePkr: pharmacyMedicines.sellingPricePkr,
+        tabletsPerStrip: pharmacyMedicines.tabletsPerStrip,
+        stripsPerBox: pharmacyMedicines.stripsPerBox,
       })
       .from(pharmacyMedicines)
       .leftJoin(pharmacyCompanies, eq(pharmacyCompanies.id, pharmacyMedicines.companyId))
@@ -184,6 +188,8 @@ export class SalesSearchService {
         strength: pharmacyMedicines.dosageStrength,
         wholesalePricePkr: pharmacyMedicines.wholesalePricePkr,
         sellingPricePkr: pharmacyMedicines.sellingPricePkr,
+        tabletsPerStrip: pharmacyMedicines.tabletsPerStrip,
+        stripsPerBox: pharmacyMedicines.stripsPerBox,
       })
       .from(pharmacyMedicines)
       .leftJoin(pharmacyCompanies, eq(pharmacyCompanies.id, pharmacyMedicines.companyId))
