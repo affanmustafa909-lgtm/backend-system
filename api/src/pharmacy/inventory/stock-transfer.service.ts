@@ -331,9 +331,9 @@ export class StockTransferService {
         if (batch.medicineId !== line.medicineId) {
           throw new BadRequestException("Selected batch does not belong to the selected medicine");
         }
-        // Legacy batches carry a NULL warehouse and stay visible to every
-        // warehouse in the branch; anything else must match the source.
-        if (batch.warehouseId && batch.warehouseId !== warehouseId) {
+        // Transfers require the batch to physically sit in the source warehouse.
+        // Legacy NULL-warehouse batches are not transferable from a named warehouse.
+        if (batch.warehouseId !== warehouseId) {
           throw new BadRequestException("Selected batch is not stored in the source warehouse");
         }
       }
@@ -363,6 +363,9 @@ export class StockTransferService {
       branchId,
       medicineIds: Array.from(required.keys()),
       warehouseId,
+      // Transfers move stock out of a specific warehouse — do not treat
+      // legacy NULL-warehouse batches as belonging to every warehouse.
+      strictWarehouse: true,
     });
     const byId = new Map(stock.map((s) => [s.medicineId, s]));
 
@@ -849,6 +852,22 @@ export class StockTransferService {
       const header = await this.lockHeader(organizationId, transferId, branch.id, tx);
       this.assertStatus(header.status, ["submitted"], "approve");
 
+      const lines = await tx
+        .select({
+          medicineId: pharmacyStockTransferLines.medicineId,
+          quantity: pharmacyStockTransferLines.quantity,
+        })
+        .from(pharmacyStockTransferLines)
+        .where(eq(pharmacyStockTransferLines.transferId, transferId));
+      if (!lines.length) throw new BadRequestException("Cannot approve a transfer with no lines");
+      await this.assertAvailability(
+        organizationId,
+        branch.id,
+        header.fromWarehouseId,
+        lines,
+        "approve this transfer",
+      );
+
       await tx
         .update(pharmacyStockTransfers)
         .set({ status: "approved", approvedAt: new Date(), approvedByUserId: userId ?? null })
@@ -923,6 +942,7 @@ export class StockTransferService {
           movementType: MOVEMENT_TYPES.TRANSFER_OUT,
           idempotencyKey: singleBatch ? `transfer:${transferId}:dispatch:${line.id}` : null,
           createdByUserId: userId,
+          strictWarehouse: true,
         });
         if (!usedBatchId) {
           throw new BadRequestException("Dispatch failed: no batch could be allocated for a transfer line");

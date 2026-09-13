@@ -1582,24 +1582,33 @@ export class PharmacyErpService {
   // ─── Collections ─────────────────────────────────────────────────────────
 
   async listCollections(organizationId: string, branchCode?: string) {
+    const conds = [eq(pharmacyCollections.organizationId, organizationId)];
     if (branchCode) {
       const branch = await this.resolveBranch(organizationId, branchCode);
-      return this.db
-        .select()
-        .from(pharmacyCollections)
-        .where(
-          and(
-            eq(pharmacyCollections.organizationId, organizationId),
-            eq(pharmacyCollections.branchId, branch.id),
-          ),
-        )
-        .orderBy(desc(pharmacyCollections.createdAt));
+      conds.push(eq(pharmacyCollections.branchId, branch.id));
     }
-    return this.db
-      .select()
+    const rows = await this.db
+      .select({
+        collection: pharmacyCollections,
+        tradeCustomerName: pharmacyTradeCustomers.name,
+        tradeCustomerCode: pharmacyTradeCustomers.code,
+      })
       .from(pharmacyCollections)
-      .where(eq(pharmacyCollections.organizationId, organizationId))
+      .leftJoin(
+        pharmacyTradeCustomers,
+        and(
+          eq(pharmacyTradeCustomers.id, pharmacyCollections.tradeCustomerId),
+          eq(pharmacyTradeCustomers.organizationId, pharmacyCollections.organizationId),
+        ),
+      )
+      .where(and(...conds))
       .orderBy(desc(pharmacyCollections.createdAt));
+
+    return rows.map((row) => ({
+      ...row.collection,
+      tradeCustomerName: row.tradeCustomerName ?? null,
+      tradeCustomerCode: row.tradeCustomerCode ?? null,
+    }));
   }
 
   /**

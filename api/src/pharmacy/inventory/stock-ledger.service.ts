@@ -5,6 +5,15 @@ import {
   pharmacyMedicines,
   pharmacyStockMovements,
   pharmacyWarehouses,
+  pharmacyWholesaleReturns,
+  pharmacyTradeCustomers,
+  pharmacyPurchaseOrders,
+  pharmacyGrns,
+  pharmacyStockTransfers,
+  pharmacyStockAdjustments,
+  pharmacyDistOrders,
+  pharmacyCollections,
+  pharmacyPurchaseReturns,
   users,
   type PlatformPgDb,
 } from "@platform/database-pg";
@@ -256,9 +265,10 @@ export class StockLedgerService {
       .leftJoin(pharmacyMedicineBatches, eq(pharmacyMedicineBatches.id, pharmacyStockMovements.batchId))
       .where(where);
     const total = Number(totalRow?.value ?? 0);
+    const enriched = await this.attachReferenceLabels(organizationId, rows);
 
     return {
-      items: rows.map((r) => ({
+      items: enriched.map((r) => ({
         ...r,
         movementType: normalizeMovementType(r.movementType),
         rawMovementType: r.movementType,
@@ -269,6 +279,214 @@ export class StockLedgerService {
       total,
       totalPages: Math.max(1, Math.ceil(total / pageSize)),
     };
+  }
+
+  /**
+   * Resolve document numbers / party names for ledger reference UUIDs.
+   * Never leave the UI showing a bare UUID when a human label exists.
+   */
+  private async attachReferenceLabels(
+    organizationId: string,
+    rows: Array<{
+      referenceType: string | null;
+      referenceId: string | null;
+      [key: string]: unknown;
+    }>,
+  ) {
+    const byType = new Map<string, Set<string>>();
+    for (const r of rows) {
+      const t = (r.referenceType ?? "").trim().toLowerCase();
+      const id = (r.referenceId ?? "").trim();
+      if (!t || !id) continue;
+      if (!byType.has(t)) byType.set(t, new Set());
+      byType.get(t)!.add(id);
+    }
+
+    const labelByKey = new Map<string, { referenceNumber: string | null; partyName: string | null; referenceLabel: string }>();
+
+    const put = (
+      type: string,
+      id: string,
+      number: string | null,
+      party: string | null,
+      typeTitle: string,
+    ) => {
+      const parts = [typeTitle];
+      if (number) parts.push(number);
+      if (party) parts.push(`· ${party}`);
+      labelByKey.set(`${type}:${id}`, {
+        referenceNumber: number,
+        partyName: party,
+        referenceLabel: parts.join(" "),
+      });
+    };
+
+    const wrIds = [...(byType.get("wholesale_return") ?? [])];
+    if (wrIds.length) {
+      const found = await this.db
+        .select({
+          id: pharmacyWholesaleReturns.id,
+          returnNumber: pharmacyWholesaleReturns.returnNumber,
+          customerName: pharmacyTradeCustomers.name,
+        })
+        .from(pharmacyWholesaleReturns)
+        .leftJoin(
+          pharmacyTradeCustomers,
+          eq(pharmacyTradeCustomers.id, pharmacyWholesaleReturns.tradeCustomerId),
+        )
+        .where(
+          and(
+            eq(pharmacyWholesaleReturns.organizationId, organizationId),
+            inArray(pharmacyWholesaleReturns.id, wrIds),
+          ),
+        );
+      for (const f of found) {
+        put("wholesale_return", f.id, f.returnNumber, f.customerName ?? null, "Wholesale return");
+      }
+    }
+
+    const poIds = [...(byType.get("purchase_order") ?? []), ...(byType.get("purchase") ?? [])];
+    if (poIds.length) {
+      const found = await this.db
+        .select({ id: pharmacyPurchaseOrders.id, poNumber: pharmacyPurchaseOrders.poNumber })
+        .from(pharmacyPurchaseOrders)
+        .where(
+          and(
+            eq(pharmacyPurchaseOrders.organizationId, organizationId),
+            inArray(pharmacyPurchaseOrders.id, poIds),
+          ),
+        );
+      for (const f of found) {
+        put("purchase_order", f.id, f.poNumber, null, "Purchase order");
+        put("purchase", f.id, f.poNumber, null, "Purchase");
+      }
+    }
+
+    const grnIds = [...(byType.get("grn") ?? [])];
+    if (grnIds.length) {
+      const found = await this.db
+        .select({ id: pharmacyGrns.id, grnNumber: pharmacyGrns.grnNumber })
+        .from(pharmacyGrns)
+        .where(and(eq(pharmacyGrns.organizationId, organizationId), inArray(pharmacyGrns.id, grnIds)));
+      for (const f of found) put("grn", f.id, f.grnNumber, null, "GRN");
+    }
+
+    const trIds = [...(byType.get("stock_transfer") ?? [])];
+    if (trIds.length) {
+      const found = await this.db
+        .select({ id: pharmacyStockTransfers.id, transferNumber: pharmacyStockTransfers.transferNumber })
+        .from(pharmacyStockTransfers)
+        .where(
+          and(
+            eq(pharmacyStockTransfers.organizationId, organizationId),
+            inArray(pharmacyStockTransfers.id, trIds),
+          ),
+        );
+      for (const f of found) put("stock_transfer", f.id, f.transferNumber, null, "Stock transfer");
+    }
+
+    const adjIds = [...(byType.get("stock_adjustment") ?? [])];
+    if (adjIds.length) {
+      const found = await this.db
+        .select({
+          id: pharmacyStockAdjustments.id,
+          adjustmentNumber: pharmacyStockAdjustments.adjustmentNumber,
+        })
+        .from(pharmacyStockAdjustments)
+        .where(
+          and(
+            eq(pharmacyStockAdjustments.organizationId, organizationId),
+            inArray(pharmacyStockAdjustments.id, adjIds),
+          ),
+        );
+      for (const f of found) put("stock_adjustment", f.id, f.adjustmentNumber, null, "Stock adjustment");
+    }
+
+    const orderIds = [
+      ...(byType.get("dist_order") ?? []),
+      ...(byType.get("distribution_order") ?? []),
+      ...(byType.get("sale") ?? []),
+    ];
+    if (orderIds.length) {
+      const found = await this.db
+        .select({
+          id: pharmacyDistOrders.id,
+          orderNumber: pharmacyDistOrders.orderNumber,
+          customerName: pharmacyTradeCustomers.name,
+        })
+        .from(pharmacyDistOrders)
+        .leftJoin(
+          pharmacyTradeCustomers,
+          eq(pharmacyTradeCustomers.id, pharmacyDistOrders.tradeCustomerId),
+        )
+        .where(
+          and(eq(pharmacyDistOrders.organizationId, organizationId), inArray(pharmacyDistOrders.id, orderIds)),
+        );
+      for (const f of found) {
+        put("dist_order", f.id, f.orderNumber, f.customerName ?? null, "Sale order");
+        put("distribution_order", f.id, f.orderNumber, f.customerName ?? null, "Sale order");
+        put("sale", f.id, f.orderNumber, f.customerName ?? null, "Sale");
+      }
+    }
+
+    const colIds = [...(byType.get("collection") ?? [])];
+    if (colIds.length) {
+      const found = await this.db
+        .select({
+          id: pharmacyCollections.id,
+          collectionNumber: pharmacyCollections.collectionNumber,
+          customerName: pharmacyTradeCustomers.name,
+        })
+        .from(pharmacyCollections)
+        .leftJoin(
+          pharmacyTradeCustomers,
+          eq(pharmacyTradeCustomers.id, pharmacyCollections.tradeCustomerId),
+        )
+        .where(
+          and(eq(pharmacyCollections.organizationId, organizationId), inArray(pharmacyCollections.id, colIds)),
+        );
+      for (const f of found) {
+        put("collection", f.id, f.collectionNumber, f.customerName ?? null, "Collection");
+      }
+    }
+
+    const prIds = [...(byType.get("purchase_return") ?? [])];
+    if (prIds.length) {
+      const found = await this.db
+        .select({ id: pharmacyPurchaseReturns.id, returnNumber: pharmacyPurchaseReturns.returnNumber })
+        .from(pharmacyPurchaseReturns)
+        .where(
+          and(
+            eq(pharmacyPurchaseReturns.organizationId, organizationId),
+            inArray(pharmacyPurchaseReturns.id, prIds),
+          ),
+        );
+      for (const f of found) put("purchase_return", f.id, f.returnNumber, null, "Purchase return");
+    }
+
+    return rows.map((r) => {
+      const t = (r.referenceType ?? "").trim().toLowerCase();
+      const id = (r.referenceId ?? "").trim();
+      const hit = t && id ? labelByKey.get(`${t}:${id}`) : undefined;
+      if (hit) {
+        return {
+          ...r,
+          referenceNumber: hit.referenceNumber,
+          partyName: hit.partyName,
+          referenceLabel: hit.referenceLabel,
+        };
+      }
+      // No lookup — still never expose bare UUID as the only label.
+      const typeTitle = t
+        ? t.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+        : null;
+      return {
+        ...r,
+        referenceNumber: id && !/^[0-9a-f-]{36}$/i.test(id) ? id : null,
+        partyName: null,
+        referenceLabel: typeTitle,
+      };
+    });
   }
 
   /** Totals in / out for the same filter set, for register footers. */

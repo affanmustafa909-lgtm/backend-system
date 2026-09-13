@@ -73,6 +73,19 @@ export class PurchaseGrnService {
     return Math.floor((exp.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
   }
 
+  /** Human label for errors — never surface a raw medicine UUID. */
+  private async medicineLabel(medicineId: string): Promise<string> {
+    const [row] = await this.db
+      .select({ name: pharmacyMedicines.name, sku: pharmacyMedicines.sku })
+      .from(pharmacyMedicines)
+      .where(eq(pharmacyMedicines.id, medicineId))
+      .limit(1);
+    if (row?.name?.trim()) {
+      return row.sku?.trim() ? `${row.name.trim()} (${row.sku.trim()})` : row.name.trim();
+    }
+    return "this product";
+  }
+
   async list(
     organizationId: string,
     filters: {
@@ -196,13 +209,17 @@ export class PurchaseGrnService {
             ? po.lines.find((l) => l.id === line.purchaseOrderLineId)
             : undefined) ?? po.lines.find((l) => l.medicineId === line.medicineId);
         if (!match) {
-          throw new BadRequestException(`No matching PO line for medicine ${line.medicineId}`);
+          const label = await this.medicineLabel(line.medicineId);
+          throw new BadRequestException(`No matching PO line for ${label}`);
         }
         const pending = match.pendingQty;
         if (receiveTotal > pending) {
           // Over-receive blocked for now (overReceive flag reserved for later).
+          const label =
+            (typeof match.medicineName === "string" && match.medicineName.trim()) ||
+            (await this.medicineLabel(line.medicineId));
           throw new BadRequestException(
-            `Over-receive blocked for medicine ${line.medicineId}: receiving ${receiveTotal}, pending ${pending}`,
+            `Over-receive blocked for ${label}: receiving ${receiveTotal} (qty + free), pending ${pending}`,
           );
         }
         if (match.unitCostPkr > 0 && unitCost > 0) {

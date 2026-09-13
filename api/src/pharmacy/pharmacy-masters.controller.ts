@@ -114,6 +114,19 @@ export class PharmacyMastersController {
     return this.masters.listCategories(user.organizationId, this.pageFilters(query));
   }
 
+  /** Merged master + medicine free-text categories for cycle-count / filter pickers. */
+  @Get("masters/categories/picker")
+  @RequirePermissions("distribution.masters", "pharmacy.view", "pops.read", "inventory.view", "pharmacy.inventory.view")
+  listCategoryPicker(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query() query: Record<string, string | undefined>,
+  ) {
+    return this.masters.listCategoryPicker(user.organizationId, {
+      branchCode: query.branchCode,
+      status: query.status,
+    });
+  }
+
   @Post("masters/categories")
   @RequirePermissions("distribution.masters", "pharmacy.inventory.manage", "pops.inventory.manage")
   createCategory(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {

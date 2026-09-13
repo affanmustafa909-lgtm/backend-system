@@ -78,6 +78,7 @@ export class PharmacyInventoryController {
     return this.inventory.listStock(user.organizationId, {
       branchCode: q.branchCode ?? "",
       warehouseId: q.warehouseId,
+      strictWarehouse: q.strictWarehouse === "true" || q.strictWarehouse === "1",
       companyId: q.companyId,
       q: q.q,
       stockState: q.stockState,
@@ -149,6 +150,7 @@ export class PharmacyInventoryController {
     return this.batches.listBatches(user.organizationId, {
       branchCode: q.branchCode ?? "",
       warehouseId: q.warehouseId,
+      strictWarehouse: q.strictWarehouse === "true" || q.strictWarehouse === "1",
       medicineId: q.medicineId,
       companyId: q.companyId,
       q: q.q,

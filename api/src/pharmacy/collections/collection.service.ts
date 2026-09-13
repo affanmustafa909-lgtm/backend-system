@@ -249,21 +249,56 @@ export class CollectionService {
     if (filters.q?.trim()) {
       const q = `%${filters.q.trim()}%`;
       conds.push(
-        or(ilike(pharmacyCollections.collectionNumber, q), ilike(pharmacyCollections.chequeNumber, q))!,
+        or(
+          ilike(pharmacyCollections.collectionNumber, q),
+          ilike(pharmacyCollections.chequeNumber, q),
+          ilike(pharmacyTradeCustomers.name, q),
+          ilike(pharmacyTradeCustomers.code, q),
+        )!,
       );
     }
     const where = and(...conds);
 
-    const [totalRow] = await this.db.select({ n: count() }).from(pharmacyCollections).where(where);
-    const items = await this.db
-      .select()
+    const [totalRow] = await this.db
+      .select({ n: count() })
       .from(pharmacyCollections)
+      .leftJoin(
+        pharmacyTradeCustomers,
+        and(
+          eq(pharmacyTradeCustomers.id, pharmacyCollections.tradeCustomerId),
+          eq(pharmacyTradeCustomers.organizationId, pharmacyCollections.organizationId),
+        ),
+      )
+      .where(where);
+    const items = await this.db
+      .select({
+        collection: pharmacyCollections,
+        tradeCustomerName: pharmacyTradeCustomers.name,
+        tradeCustomerCode: pharmacyTradeCustomers.code,
+      })
+      .from(pharmacyCollections)
+      .leftJoin(
+        pharmacyTradeCustomers,
+        and(
+          eq(pharmacyTradeCustomers.id, pharmacyCollections.tradeCustomerId),
+          eq(pharmacyTradeCustomers.organizationId, pharmacyCollections.organizationId),
+        ),
+      )
       .where(where)
       .orderBy(desc(pharmacyCollections.createdAt))
       .limit(pageSize)
       .offset(offset);
 
-    return { items, page, pageSize, total: Number(totalRow?.n ?? 0) };
+    return {
+      items: items.map((row) => ({
+        ...row.collection,
+        tradeCustomerName: row.tradeCustomerName ?? null,
+        tradeCustomerCode: row.tradeCustomerCode ?? null,
+      })),
+      page,
+      pageSize,
+      total: Number(totalRow?.n ?? 0),
+    };
   }
 
   async getById(organizationId: string, id: string) {

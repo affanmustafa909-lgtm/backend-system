@@ -78,6 +78,8 @@ export type StockTotals = {
 export type StockListFilters = {
   branchCode: string;
   warehouseId?: string;
+  /** Exact warehouse match — exclude legacy NULL-warehouse batches. */
+  strictWarehouse?: boolean;
   companyId?: string;
   q?: string;
   /** all | ok | low | out | negative | near_expiry | expired | has_hold */
@@ -277,11 +279,14 @@ export class InventoryService {
 
   /**
    * Batch join condition. Legacy batches carry a NULL warehouse and stay visible
-   * to every warehouse in the branch, otherwise real stock would vanish.
+   * to every warehouse in the branch unless `strictWarehouse` is set.
    */
-  private batchJoinOn(warehouseId?: string | null): SQL {
+  private batchJoinOn(warehouseId?: string | null, strictWarehouse = false): SQL {
     const base = eq(pharmacyMedicineBatches.medicineId, pharmacyMedicines.id);
     if (!warehouseId) return base;
+    if (strictWarehouse) {
+      return and(base, eq(pharmacyMedicineBatches.warehouseId, warehouseId)) as SQL;
+    }
     return and(
       base,
       sql`(${pharmacyMedicineBatches.warehouseId} = ${warehouseId} OR ${pharmacyMedicineBatches.warehouseId} IS NULL)`,
@@ -367,7 +372,7 @@ export class InventoryService {
 
     const where = and(...this.medicineClauses(organizationId, branch.id, filters));
     const having = this.stockStateHaving(filters.stockState, expr);
-    const joinOn = this.batchJoinOn(warehouse?.id ?? null);
+    const joinOn = this.batchJoinOn(warehouse?.id ?? null, filters.strictWarehouse === true);
     const earliestExpiry = this.earliestExpiryExpr();
 
     const sort = (filters.sort ?? "name_asc").trim().toLowerCase();

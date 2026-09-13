@@ -42,7 +42,7 @@ export class FieldForceRoutePlanService {
         outstandingPkr: pharmacyTradeCustomers.outstandingPkr,
       })
       .from(pharmacyRouteCustomers)
-      .innerJoin(pharmacyTradeCustomers, eq(pharmacyTradeCustomers.id, pharmacyRouteCustomers.tradeCustomerId))
+      .leftJoin(pharmacyTradeCustomers, eq(pharmacyTradeCustomers.id, pharmacyRouteCustomers.tradeCustomerId))
       .where(
         and(
           eq(pharmacyRouteCustomers.organizationId, organizationId),

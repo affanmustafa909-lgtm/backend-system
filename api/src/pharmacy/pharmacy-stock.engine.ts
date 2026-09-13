@@ -209,6 +209,8 @@ export class PharmacyStockEngine {
       movementType?: string;
       idempotencyKey?: string | null;
       createdByUserId?: string;
+      /** Exact warehouse match — used by stock transfers. */
+      strictWarehouse?: boolean;
     },
   ): Promise<string | null> {
     if (input.qty <= 0) return null;
@@ -246,6 +248,7 @@ export class PharmacyStockEngine {
         preferredBatchId: input.preferredBatchId ?? null,
         allowExpired: !settings.blockExpiredSale,
         lock: true,
+        strictWarehouse: input.strictWarehouse === true,
       },
       tx,
     );

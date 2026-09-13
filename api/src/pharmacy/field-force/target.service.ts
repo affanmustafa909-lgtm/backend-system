@@ -73,11 +73,12 @@ export class FieldForceTargetService {
     if (input.routeId) overlapConds.push(eq(pharmacyTargets.routeId, input.routeId));
 
     const [overlap] = await this.db.select().from(pharmacyTargets).where(and(...overlapConds)).limit(1);
-    if (overlap && !input.changeReason) {
-      throw new BadRequestException("Overlapping active target exists — pass changeReason to revise");
-    }
+    // Dist UI expects Save to revise an overlapping active target instead of hard-failing.
+    const changeReason =
+      input.changeReason?.trim() ||
+      (overlap ? "Revised from Targets screen" : undefined);
 
-    if (overlap && input.changeReason) {
+    if (overlap) {
       await this.db.update(pharmacyTargets).set({ status: "superseded" }).where(eq(pharmacyTargets.id, overlap.id));
     }
 
@@ -100,7 +101,7 @@ export class FieldForceTargetService {
           targetVisits: Math.round(input.targetVisits ?? 0),
           version: overlap ? (overlap.version ?? 1) + 1 : 1,
           previousTargetId: overlap?.id ?? null,
-          changeReason: input.changeReason ?? null,
+          changeReason: changeReason ?? null,
           createdByUserId: userId ?? null,
         })
         .returning();
@@ -111,7 +112,7 @@ export class FieldForceTargetService {
         action: overlap ? "revise" : "create",
         oldValue: overlap ?? undefined,
         newValue: row,
-        reason: input.changeReason,
+        reason: changeReason,
         userId,
       });
       return this.withActuals(organizationId, row);

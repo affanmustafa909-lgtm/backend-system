@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import type { CreatePharmacyPurchaseOrder } from "@platform/contracts";
-import { and, count, desc, eq, gte, ilike, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import {
   pharmacyMedicines,
   pharmacyPurchaseOrderLines,
@@ -112,7 +112,22 @@ export class PurchaseOrderService {
       clauses.push(eq(pharmacyPurchaseOrders.branchId, branch.id));
     }
     if (filters.status?.trim()) {
-      clauses.push(eq(pharmacyPurchaseOrders.status, filters.status.trim()));
+      const st = filters.status.trim().toLowerCase();
+      // UI "Pending" = any open PO (draft through partial) — not a DB status value.
+      if (st === "pending") {
+        clauses.push(
+          inArray(pharmacyPurchaseOrders.status, [
+            "draft",
+            "submitted",
+            "approved",
+            "sent",
+            "supplier_confirmed",
+            "partial",
+          ]),
+        );
+      } else {
+        clauses.push(eq(pharmacyPurchaseOrders.status, filters.status.trim()));
+      }
     }
     if (filters.supplierId?.trim()) {
       clauses.push(eq(pharmacyPurchaseOrders.supplierId, filters.supplierId.trim()));
@@ -223,6 +238,22 @@ export class PurchaseOrderService {
     }
 
     const branch = await this.resolveBranch(organizationId, input.branchCode);
+    if (!input.lines?.length) {
+      throw new BadRequestException("Add at least one line");
+    }
+    const medicineIds = [...new Set(input.lines.map((l) => l.medicineId))];
+    const medicines = await this.db
+      .select({ id: pharmacyMedicines.id })
+      .from(pharmacyMedicines)
+      .where(
+        and(
+          eq(pharmacyMedicines.organizationId, organizationId),
+          inArray(pharmacyMedicines.id, medicineIds),
+        ),
+      );
+    if (medicines.length !== medicineIds.length) {
+      throw new BadRequestException("One or more medicines were not found for this organization");
+    }
     let subtotal = 0;
     for (const line of input.lines) {
       const qty = Math.round(line.quantity);
@@ -238,6 +269,8 @@ export class PurchaseOrderService {
     if (wantSubmit && !input.supplierId) {
       throw new BadRequestException("supplierId is required to submit a purchase order");
     }
+    const warehouseId = input.warehouseId?.trim() || null;
+    const supplierId = input.supplierId?.trim() || null;
 
     return this.numbering.withNumber(organizationId, "order", async (poNumber) => {
       const [po] = await this.db
@@ -245,8 +278,8 @@ export class PurchaseOrderService {
         .values({
           organizationId,
           branchId: branch.id,
-          warehouseId: input.warehouseId ?? null,
-          supplierId: input.supplierId ?? null,
+          warehouseId,
+          supplierId,
           requisitionId: input.requisitionId ?? null,
           poNumber,
           status: wantSubmit ? "submitted" : "draft",

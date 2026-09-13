@@ -701,15 +701,23 @@ export const createPharmacyTradeCustomerSchema = z.object({
   taxInfo: z.string().optional(),
 });
 
+/** Treat "" / whitespace as undefined so optional UUID fields don't fail Zod. */
+const optionalUuid = z.preprocess((value) => {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}, z.string().uuid().optional());
+
 export const createPharmacyPurchaseOrderSchema = z.object({
   branchCode: z.string().min(1),
-  supplierId: z.string().uuid().optional(),
+  supplierId: optionalUuid,
   orderDate: z.string().optional(),
   expectedDate: z.string().optional(),
   notes: z.string().optional(),
   taxPkr: z.number().min(0).optional(),
   discountPkr: z.number().min(0).optional(),
-  warehouseId: z.string().uuid().optional(),
+  warehouseId: optionalUuid,
   paymentTerms: z.string().optional(),
   idempotencyKey: z.string().min(1).max(128).optional(),
   submit: z.boolean().optional(),
@@ -725,7 +733,7 @@ export const createPharmacyPurchaseOrderSchema = z.object({
         notes: z.string().optional(),
       }),
     )
-    .min(1),
+    .min(1, "Add at least one line"),
 });
 
 export const createPharmacyGrnSchema = z.object({
@@ -1311,7 +1319,8 @@ export const fieldForceReorderRouteSchema = z.object({
 });
 
 export const createFieldForcePjpSchema = z.object({
-  branchCode: z.string().optional(),
+  /** Required so list-by-branch (Dist UI) can find the row after save. */
+  branchCode: z.string().min(1),
   name: z.string().min(1),
   employeeId: z.string().uuid(),
   territoryId: z.string().uuid().optional(),

@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { and, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { CreateFieldForcePjp } from "@platform/contracts";
 import {
   pharmacyPjpLines,
@@ -31,7 +31,10 @@ export class FieldForcePjpService {
     const conds: SQL[] = [eq(pharmacyPjps.organizationId, organizationId)];
     if (filters.employeeId) conds.push(eq(pharmacyPjps.employeeId, filters.employeeId));
     if (filters.status) conds.push(eq(pharmacyPjps.status, filters.status));
-    if (branch) conds.push(eq(pharmacyPjps.branchId, branch.id));
+    // Include legacy rows saved without branchId so Dist "list by branch" still shows them.
+    if (branch) {
+      conds.push(or(eq(pharmacyPjps.branchId, branch.id), isNull(pharmacyPjps.branchId))!);
+    }
 
     const rows = await this.db
       .select({
@@ -51,7 +54,7 @@ export class FieldForcePjpService {
         lineCount: sql<number>`(select count(*)::int from ${pharmacyPjpLines} where ${pharmacyPjpLines.pjpId} = ${pharmacyPjps.id})`,
       })
       .from(pharmacyPjps)
-      .innerJoin(popsEmployees, eq(popsEmployees.id, pharmacyPjps.employeeId))
+      .leftJoin(popsEmployees, eq(popsEmployees.id, pharmacyPjps.employeeId))
       .where(and(...conds))
       .orderBy(desc(pharmacyPjps.createdAt));
 
@@ -86,7 +89,7 @@ export class FieldForcePjpService {
         customerCode: pharmacyTradeCustomers.code,
       })
       .from(pharmacyPjpLines)
-      .innerJoin(pharmacyTradeCustomers, eq(pharmacyTradeCustomers.id, pharmacyPjpLines.tradeCustomerId))
+      .leftJoin(pharmacyTradeCustomers, eq(pharmacyTradeCustomers.id, pharmacyPjpLines.tradeCustomerId))
       .where(eq(pharmacyPjpLines.pjpId, id))
       .orderBy(pharmacyPjpLines.dayOfWeek, pharmacyPjpLines.sequenceNo);
     return { ...row, lines };
@@ -94,13 +97,17 @@ export class FieldForcePjpService {
 
   async create(organizationId: string, input: CreateFieldForcePjp, userId?: string, previous?: { id: string; version: number }) {
     await this.assertSalesmanActive(organizationId, input.employeeId);
+    if (!input.branchCode?.trim()) {
+      throw new BadRequestException("branchCode is required to create a PJP");
+    }
     const branch = await resolveBranch(this.db, organizationId, input.branchCode);
+    if (!branch) throw new BadRequestException("branchCode is required to create a PJP");
     return this.numbering.withNumber(organizationId, "pjp", async (pjpNumber) => {
       const [row] = await this.db
         .insert(pharmacyPjps)
         .values({
           organizationId,
-          branchId: branch?.id ?? null,
+          branchId: branch.id,
           pjpNumber,
           name: input.name,
           employeeId: input.employeeId,

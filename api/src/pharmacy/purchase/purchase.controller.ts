@@ -15,6 +15,7 @@ import { z } from "zod";
 import { JwtAuthGuard } from "../../auth/jwt-auth.guard";
 import { CurrentUser } from "../../auth/current-user.decorator";
 import type { AccessJwtPayload } from "../../auth/jwt.types";
+import { zodBadRequest } from "../../common/zod-exception.filter";
 import { PermissionsGuard } from "../../users/permissions.guard";
 import { RequirePermissions } from "../../users/require-permission.decorator";
 import { SystemTypeGuard } from "../../users/system-type.guard";
@@ -189,18 +190,9 @@ export class PurchaseController {
   @Post("orders")
   @RequirePermissions("purchase.order", "pharmacy.purchase.manage", "pops.inventory.manage")
   createOrder(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
-    const raw = body as Record<string, unknown>;
-    return this.orders.create(
-      user.organizationId,
-      {
-        ...createPharmacyPurchaseOrderSchema.parse(body),
-        warehouseId: typeof raw.warehouseId === "string" ? raw.warehouseId : undefined,
-        paymentTerms: typeof raw.paymentTerms === "string" ? raw.paymentTerms : undefined,
-        idempotencyKey: typeof raw.idempotencyKey === "string" ? raw.idempotencyKey : undefined,
-        submit: raw.submit === true,
-      },
-      user.sub,
-    );
+    const parsed = createPharmacyPurchaseOrderSchema.safeParse(body);
+    if (!parsed.success) throw zodBadRequest(parsed.error);
+    return this.orders.create(user.organizationId, parsed.data, user.sub);
   }
 
   @Get("orders/:id")

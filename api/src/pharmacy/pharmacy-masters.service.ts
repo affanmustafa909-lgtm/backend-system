@@ -336,6 +336,67 @@ export class PharmacyMastersService {
     return this.pageResult(items, Number(totalRow?.n ?? 0), page, pageSize);
   }
 
+  /**
+   * Category picker for cycle counts / filters.
+   * Merges pharmacy_categories masters with distinct free-text medicine.category
+   * values so empty master tables still show usable options.
+   */
+  async listCategoryPicker(
+    organizationId: string,
+    filters: { branchCode?: string; status?: string } = {},
+  ): Promise<{ items: { id: string; code: string; name: string; source: "master" | "medicine" }[] }> {
+    const status = filters.status ? this.normalizeStatus(filters.status) : "active";
+    const masters = await this.db
+      .select({
+        id: pharmacyCategories.id,
+        code: pharmacyCategories.code,
+        name: pharmacyCategories.name,
+      })
+      .from(pharmacyCategories)
+      .where(
+        and(
+          eq(pharmacyCategories.organizationId, organizationId),
+          eq(pharmacyCategories.status, status),
+        ),
+      )
+      .orderBy(asc(pharmacyCategories.name));
+
+    const medConds: SQL[] = [eq(pharmacyMedicines.organizationId, organizationId)];
+    if (filters.branchCode?.trim()) {
+      const branch = await this.resolveBranch(organizationId, filters.branchCode.trim());
+      medConds.push(eq(pharmacyMedicines.branchId, branch.id));
+    }
+    medConds.push(eq(pharmacyMedicines.status, "active"));
+
+    const medicineCats = await this.db
+      .selectDistinct({
+        category: pharmacyMedicines.category,
+        categoryId: pharmacyMedicines.categoryId,
+      })
+      .from(pharmacyMedicines)
+      .where(and(...medConds));
+
+    const items: { id: string; code: string; name: string; source: "master" | "medicine" }[] = masters.map(
+      (m) => ({ id: m.id, code: m.code, name: m.name, source: "master" as const }),
+    );
+    const seen = new Set(masters.map((m) => m.name.trim().toLowerCase()).filter(Boolean));
+    const masterIds = new Set(masters.map((m) => m.id));
+
+    for (const row of medicineCats) {
+      if (row.categoryId && masterIds.has(row.categoryId)) continue;
+      const name = (row.category ?? "").trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      // Synthetic id — FE sends this back as scope.category (name), not categoryId.
+      items.push({ id: `name:${name}`, code: name, name, source: "medicine" });
+    }
+
+    items.sort((a, b) => a.name.localeCompare(b.name));
+    return { items };
+  }
+
   async createCategory(
     organizationId: string,
     body: { code: string; name: string; parentId?: string; notes?: string; status?: string },

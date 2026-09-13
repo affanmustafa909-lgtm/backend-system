@@ -122,6 +122,8 @@ export type ExpiryBucketsResult = {
 export type BatchListFilters = {
   branchCode: string;
   warehouseId?: string;
+  /** Exact warehouse match — exclude legacy NULL-warehouse batches. */
+  strictWarehouse?: boolean;
   medicineId?: string;
   companyId?: string;
   q?: string;
@@ -256,23 +258,30 @@ export class BatchStockService {
 
   /**
    * Legacy batches carry a NULL warehouse. Hiding them from a warehouse filter
-   * would make real stock disappear, so they are always included.
+   * would make real stock disappear, so they are included unless `strict` is set
+   * (warehouse-to-warehouse transfers must not invent stock in empty warehouses).
    */
-  private warehouseClause(warehouseId?: string | null): SQL | null {
+  private warehouseClause(warehouseId?: string | null, strict = false): SQL | null {
     if (!warehouseId) return null;
+    if (strict) return eq(pharmacyMedicineBatches.warehouseId, warehouseId);
     return sql`(${pharmacyMedicineBatches.warehouseId} = ${warehouseId} OR ${pharmacyMedicineBatches.warehouseId} IS NULL)`;
   }
 
   private scopeClauses(
     organizationId: string,
     branchId: string,
-    opts: { warehouseId?: string | null; medicineId?: string | null; companyId?: string | null } = {},
+    opts: {
+      warehouseId?: string | null;
+      medicineId?: string | null;
+      companyId?: string | null;
+      strictWarehouse?: boolean;
+    } = {},
   ): SQL[] {
     const clauses: SQL[] = [
       eq(pharmacyMedicines.organizationId, organizationId),
       eq(pharmacyMedicines.branchId, branchId),
     ];
-    const wh = this.warehouseClause(opts.warehouseId);
+    const wh = this.warehouseClause(opts.warehouseId, opts.strictWarehouse === true);
     if (wh) clauses.push(wh);
     if (opts.medicineId) clauses.push(eq(pharmacyMedicineBatches.medicineId, opts.medicineId));
     if (opts.companyId) clauses.push(eq(pharmacyMedicines.companyId, opts.companyId));
@@ -399,6 +408,7 @@ export class BatchStockService {
       warehouseId: warehouse?.id ?? null,
       medicineId: filters.medicineId,
       companyId: filters.companyId,
+      strictWarehouse: filters.strictWarehouse === true,
     });
 
     const statusClause = this.statusClause(filters.status, settings.nearExpiryDays);

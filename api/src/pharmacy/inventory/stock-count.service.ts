@@ -45,6 +45,8 @@ const MAX_COUNT_LINES = 5000;
 export type CountScope = {
   companyId?: string;
   categoryId?: string;
+  /** Free-text medicine.category (when no master category row exists). */
+  category?: string;
   medicineIds?: string[];
   rackLocation?: string;
 };
@@ -429,7 +431,12 @@ export class StockCountService {
       sql`${pharmacyMedicineBatches.quantity} <> 0`,
     ];
     if (scope?.companyId) clauses.push(eq(pharmacyMedicines.companyId, scope.companyId));
-    if (scope?.categoryId) clauses.push(eq(pharmacyMedicines.categoryId, scope.categoryId));
+    if (scope?.categoryId) {
+      clauses.push(eq(pharmacyMedicines.categoryId, scope.categoryId));
+    } else if (scope?.category?.trim()) {
+      const cat = scope.category.trim().toLowerCase();
+      clauses.push(sql`lower(${pharmacyMedicines.category}) = ${cat}`);
+    }
     if (scope?.medicineIds?.length) clauses.push(inArray(pharmacyMedicines.id, scope.medicineIds));
     if (scope?.rackLocation?.trim()) {
       clauses.push(ilike(pharmacyMedicines.rackLocation, `%${scope.rackLocation.trim()}%`));

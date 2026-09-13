@@ -5,6 +5,7 @@ import { NestFactory } from "@nestjs/core";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import compression from "compression";
 import { AppModule } from "./app.module";
+import { ZodExceptionFilter } from "./common/zod-exception.filter";
 import { createRequestConcurrencyMiddleware } from "./load/requestConcurrency";
 
 const compressionMiddleware =
@@ -58,6 +59,7 @@ async function bootstrap(): Promise<void> {
   console.log(`[api] Bootstrapping on ${host}:${port} (NODE_ENV=${process.env.NODE_ENV ?? "development"})`);
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
+  app.useGlobalFilters(new ZodExceptionFilter());
   app.use(compressionMiddleware());
   app.use(createRequestConcurrencyMiddleware());
   app.enableCors({

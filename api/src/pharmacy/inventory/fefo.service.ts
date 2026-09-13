@@ -39,6 +39,11 @@ export type FefoPlanInput = {
   allowExpired?: boolean;
   /** Lock rows for update. Required when the plan will be executed. */
   lock?: boolean;
+  /**
+   * When true with warehouseId, ignore legacy NULL-warehouse batches.
+   * Required for warehouse-to-warehouse transfers.
+   */
+  strictWarehouse?: boolean;
 };
 
 /** `YYYY-MM-DD` in UTC — batch expiry is a date column, not a timestamp. */
@@ -71,7 +76,9 @@ export class FefoService {
     ];
     if (input.warehouseId) {
       clauses.push(
-        sql`(${pharmacyMedicineBatches.warehouseId} = ${input.warehouseId} OR ${pharmacyMedicineBatches.warehouseId} IS NULL)`,
+        input.strictWarehouse
+          ? eq(pharmacyMedicineBatches.warehouseId, input.warehouseId)
+          : sql`(${pharmacyMedicineBatches.warehouseId} = ${input.warehouseId} OR ${pharmacyMedicineBatches.warehouseId} IS NULL)`,
       );
     }
 

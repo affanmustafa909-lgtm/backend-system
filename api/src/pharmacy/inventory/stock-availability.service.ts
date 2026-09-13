@@ -151,6 +151,12 @@ export class StockAvailabilityService {
     medicineIds: string[];
     warehouseId?: string | null;
     nearExpiryDays?: number;
+    /**
+     * When true with a warehouseId, only batches stored in that warehouse count.
+     * Warehouse-to-warehouse transfers must use this — legacy NULL-warehouse
+     * batches must not make empty warehouses look stocked.
+     */
+    strictWarehouse?: boolean;
   }): Promise<MedicineAvailability[]> {
     const ids = Array.from(new Set(input.medicineIds.filter(Boolean)));
     if (!ids.length) return [];
@@ -163,7 +169,9 @@ export class StockAvailabilityService {
     const batchClauses: SQL[] = [];
     if (input.warehouseId) {
       batchClauses.push(
-        sql`(${pharmacyMedicineBatches.warehouseId} = ${input.warehouseId} OR ${pharmacyMedicineBatches.warehouseId} IS NULL)`,
+        input.strictWarehouse
+          ? eq(pharmacyMedicineBatches.warehouseId, input.warehouseId)
+          : sql`(${pharmacyMedicineBatches.warehouseId} = ${input.warehouseId} OR ${pharmacyMedicineBatches.warehouseId} IS NULL)`,
       );
     }
 

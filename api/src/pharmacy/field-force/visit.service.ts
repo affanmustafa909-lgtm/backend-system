@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { and, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, or, sql, type SQL } from "drizzle-orm";
 import type {
   CompleteFieldForceVisit,
   GenerateFieldForceVisits,
@@ -13,6 +13,7 @@ import type {
 import {
   pharmacyCollections,
   pharmacyDistOrders,
+  pharmacyPjpLines,
   pharmacyTradeCustomers,
   pharmacyVisits,
   popsEmployees,
@@ -25,6 +26,7 @@ import { FieldForcePjpService } from "./pjp.service";
 import {
   assertVisitOwner,
   resolveBranch,
+  weekdayOf,
   writeAudit,
 } from "./field-force.shared";
 
@@ -69,7 +71,10 @@ export class FieldForceVisitService {
     if (filters.routeId) conds.push(eq(pharmacyVisits.routeId, filters.routeId));
     if (filters.status) conds.push(eq(pharmacyVisits.status, filters.status));
     if (filters.outcome) conds.push(eq(pharmacyVisits.outcome, filters.outcome));
-    if (branch) conds.push(eq(pharmacyVisits.branchId, branch.id));
+    // Include visits saved without branchId (legacy / PJP without branch).
+    if (branch) {
+      conds.push(or(eq(pharmacyVisits.branchId, branch.id), isNull(pharmacyVisits.branchId))!);
+    }
     if (filters.q?.trim()) {
       const q = `%${filters.q.trim()}%`;
       conds.push(
@@ -142,12 +147,15 @@ export class FieldForceVisitService {
 
   async generate(organizationId: string, input: GenerateFieldForceVisits, user: AccessJwtPayload) {
     const date = input.date;
+    const branch = await resolveBranch(this.db, organizationId, input.branchCode);
     const plans = await this.pjp.activeForGenerate(organizationId, date, input.employeeId, input.pjpId);
     let created = 0;
     let skipped = 0;
+    let lineCandidates = 0;
     const visits = [];
     for (const { pjp, lines } of plans) {
       for (const line of lines) {
+        lineCandidates += 1;
         try {
           const row = await this.numbering.withNumber(organizationId, "visit", async (visitNumber) => {
             const [inserted] = await this.db
@@ -165,7 +173,7 @@ export class FieldForceVisitService {
                 pjpVersion: pjp.version,
                 routeId: line.routeId ?? pjp.routeId,
                 territoryId: pjp.territoryId,
-                branchId: pjp.branchId,
+                branchId: pjp.branchId ?? branch?.id ?? null,
                 idempotencyKey: input.idempotencyKey
                   ? `${input.idempotencyKey}:${pjp.id}:${line.tradeCustomerId}:${date}`
                   : `${pjp.id}:${line.tradeCustomerId}:${date}`,
@@ -188,7 +196,43 @@ export class FieldForceVisitService {
         }
       }
     }
-    return { date, created, skipped, visits: visits.length, plans: plans.length };
+
+    const weekday = weekdayOf(date);
+    const dayHints = new Set<number>();
+    if (lineCandidates === 0 && plans.length > 0) {
+      for (const { pjp } of plans) {
+        const raw = await this.db
+          .select({ dayOfWeek: pharmacyPjpLines.dayOfWeek })
+          .from(pharmacyPjpLines)
+          .where(eq(pharmacyPjpLines.pjpId, pjp.id));
+        for (const l of raw) {
+          if (l.dayOfWeek != null) dayHints.add(l.dayOfWeek);
+        }
+      }
+    }
+    const pjpWeekdays = [...dayHints].sort((a, b) => a - b);
+    const message =
+      created > 0
+        ? `Created ${created} visit(s) for ${date}`
+        : plans.length === 0
+          ? `No active PJP covers ${date}`
+          : lineCandidates === 0
+            ? `No PJP stops match ${date} (weekday ${weekday}). PJP weekdays: ${
+                pjpWeekdays.length ? pjpWeekdays.join(", ") : "none"
+              }. Change the generate date or the PJP visit weekday.`
+            : `No new visits (skipped ${skipped} duplicate(s))`;
+
+    return {
+      date,
+      created,
+      skipped,
+      visits: visits.length,
+      plans: plans.length,
+      lineCandidates,
+      weekday,
+      pjpWeekdays,
+      message,
+    };
   }
 
   async start(
