@@ -75,60 +75,57 @@ const DEFAULT_MENU: {
   },
 ];
 
+/** Shahryar Ice Cream (Toba Tek Singh) — flyer prices. Only seeded when branch menu is empty. */
 const ICE_CREAM_MENU: {
   category: string;
   sortOrder: number;
   imageUrl: string;
-  items: { name: string; price: number; featured?: boolean; imageUrl: string }[];
+  items: { name: string; secondaryName?: string; price: number; featured?: boolean; imageUrl: string }[];
 }[] = [
   {
-    category: "Scoops",
+    category: "Flavors",
     sortOrder: 10,
     imageUrl: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=400&q=60",
     items: [
-      { name: "Chocolate Scoop", price: 350, featured: true, imageUrl: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=400&q=60" },
-      { name: "Vanilla Scoop", price: 320, imageUrl: "https://images.unsplash.com/photo-1570197788417-0e82375c9371?auto=format&fit=crop&w=400&q=60" },
-      { name: "Strawberry Scoop", price: 340, featured: true, imageUrl: "https://images.unsplash.com/photo-1633933358116-a27b902fad35?auto=format&fit=crop&w=400&q=60" },
-      { name: "Pistachio Scoop", price: 380, imageUrl: "https://images.unsplash.com/photo-1501443762994-82bd5dace89a?auto=format&fit=crop&w=400&q=60" },
-    ],
-  },
-  {
-    category: "Sundaes",
-    sortOrder: 20,
-    imageUrl: "https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=400&q=60",
-    items: [
-      { name: "Hot Fudge Sundae", price: 650, featured: true, imageUrl: "https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=400&q=60" },
-      { name: "Banana Split", price: 720, imageUrl: "https://images.unsplash.com/photo-1488900128323-21503983a07e?auto=format&fit=crop&w=400&q=60" },
-      { name: "Brownie Sundae", price: 690, imageUrl: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=400&q=60" },
-    ],
-  },
-  {
-    category: "Shakes",
-    sortOrder: 30,
-    imageUrl: "https://images.unsplash.com/photo-1572490122747-3968b75cc699?auto=format&fit=crop&w=400&q=60",
-    items: [
-      { name: "Chocolate Shake", price: 480, imageUrl: "https://images.unsplash.com/photo-1572490122747-3968b75cc699?auto=format&fit=crop&w=400&q=60" },
-      { name: "Strawberry Shake", price: 470, featured: true, imageUrl: "https://images.unsplash.com/photo-1579954115545-a95591f28bfc?auto=format&fit=crop&w=400&q=60" },
-      { name: "Mango Shake", price: 490, imageUrl: "https://images.unsplash.com/photo-1546173159-315724a31696?auto=format&fit=crop&w=400&q=60" },
+      { name: "Kulfa", secondaryName: "قلفہ", price: 70, featured: true, imageUrl: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=400&q=60" },
+      { name: "Pista", secondaryName: "پستہ", price: 70, featured: true, imageUrl: "https://images.unsplash.com/photo-1501443762994-82bd5dace89a?auto=format&fit=crop&w=400&q=60" },
+      { name: "Chocolate", secondaryName: "چاکلیٹ", price: 70, featured: true, imageUrl: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=400&q=60" },
+      { name: "Chaska", secondaryName: "چسکا", price: 70, featured: true, imageUrl: "https://images.unsplash.com/photo-1488900128323-21503983a07e?auto=format&fit=crop&w=400&q=60" },
+      { name: "Mango", secondaryName: "مینگو", price: 70, featured: true, imageUrl: "https://images.unsplash.com/photo-1546173159-315724a31696?auto=format&fit=crop&w=400&q=60" },
+      { name: "Tutti Frutti", secondaryName: "ٹوٹی فروٹی", price: 70, featured: true, imageUrl: "https://images.unsplash.com/photo-1633933358116-a27b902fad35?auto=format&fit=crop&w=400&q=60" },
+      { name: "Orange", secondaryName: "اورنج فلیور", price: 70, featured: true, imageUrl: "https://images.unsplash.com/photo-1497034825429-c343d7c6a68f?auto=format&fit=crop&w=400&q=60" },
+      { name: "Vanilla", secondaryName: "ونیلا فلیور", price: 70, featured: true, imageUrl: "https://images.unsplash.com/photo-1570197788417-0e82375c9371?auto=format&fit=crop&w=400&q=60" },
     ],
   },
   {
     category: "Cones",
-    sortOrder: 40,
+    sortOrder: 20,
     imageUrl: "https://images.unsplash.com/photo-1497034825429-c343d7c6a68f?auto=format&fit=crop&w=400&q=60",
     items: [
-      { name: "Vanilla Cone", price: 280, imageUrl: "https://images.unsplash.com/photo-1497034825429-c343d7c6a68f?auto=format&fit=crop&w=400&q=60" },
-      { name: "Chocolate Dip Cone", price: 320, featured: true, imageUrl: "https://images.unsplash.com/photo-1505394033641-40c6ad1178d7?auto=format&fit=crop&w=400&q=60" },
-      { name: "Waffle Cone Duo", price: 420, imageUrl: "https://images.unsplash.com/photo-1488900128323-21503983a07e?auto=format&fit=crop&w=400&q=60" },
+      { name: "Single Cone Scoop", secondaryName: "سنگل کون", price: 80, featured: true, imageUrl: "https://images.unsplash.com/photo-1497034825429-c343d7c6a68f?auto=format&fit=crop&w=400&q=60" },
+      { name: "Double Cone Scoop", secondaryName: "ڈبل کون", price: 150, featured: true, imageUrl: "https://images.unsplash.com/photo-1505394033641-40c6ad1178d7?auto=format&fit=crop&w=400&q=60" },
     ],
   },
   {
-    category: "Cakes",
-    sortOrder: 50,
-    imageUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=400&q=60",
+    category: "Cups",
+    sortOrder: 30,
+    imageUrl: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=400&q=60",
     items: [
-      { name: "Ice Cream Cake Slice", price: 550, imageUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=400&q=60" },
-      { name: "Cheesecake Cup", price: 520, imageUrl: "https://images.unsplash.com/photo-1533134242443-d4fd215305ad?auto=format&fit=crop&w=400&q=60" },
+      { name: "One Scoop", secondaryName: "ایک اسکوپ", price: 70, featured: true, imageUrl: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=400&q=60" },
+      { name: "Two Scoops", secondaryName: "دو اسکوپ", price: 140, imageUrl: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=400&q=60" },
+      { name: "Three Scoops", secondaryName: "تین اسکوپ", price: 210, imageUrl: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=400&q=60" },
+      { name: "Four Scoops", secondaryName: "چار اسکوپ", price: 280, imageUrl: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=400&q=60" },
+    ],
+  },
+  {
+    category: "Family Packs",
+    sortOrder: 40,
+    imageUrl: "https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=400&q=60",
+    items: [
+      { name: "Six Scoops", secondaryName: "چھ اسکوپ", price: 420, imageUrl: "https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=400&q=60" },
+      { name: "Eight Scoops", secondaryName: "آٹھ اسکوپ", price: 560, imageUrl: "https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=400&q=60" },
+      { name: "Ten Scoops", secondaryName: "دس اسکوپ", price: 700, featured: true, imageUrl: "https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=400&q=60" },
+      { name: "Twelve Scoops", secondaryName: "بارہ اسکوپ", price: 840, featured: true, imageUrl: "https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=400&q=60" },
     ],
   },
 ];
@@ -212,65 +209,37 @@ export class MenuService implements OnModuleInit {
     }
   }
 
-  /** Ice Cream Bar tenants get parlour categories with photos. */
+  /** Ice Cream Bar tenants: seed Shahryar-style menu only when the branch has no categories yet. */
   private async seedIceCreamMenuIfMissing(branch: typeof popsBranches.$inferSelect): Promise<void> {
+    const existing = await this.db
+      .select({ id: popsMenuCategories.id })
+      .from(popsMenuCategories)
+      .where(eq(popsMenuCategories.branchId, branch.id))
+      .limit(1);
+    if (existing.length > 0) return;
+
     for (const block of ICE_CREAM_MENU) {
-      const existingCat = await this.db
-        .select()
-        .from(popsMenuCategories)
-        .where(and(eq(popsMenuCategories.branchId, branch.id), eq(popsMenuCategories.name, block.category)))
-        .limit(1);
-      let cat = existingCat[0];
-      if (!cat) {
-        const [created] = await this.db
-          .insert(popsMenuCategories)
-          .values({
-            organizationId: branch.organizationId,
-            branchId: branch.id,
-            name: block.category,
-            imageUrl: block.imageUrl,
-            sortOrder: block.sortOrder,
-            isActive: true,
-          })
-          .returning();
-        cat = created;
-      } else if (!cat.imageUrl) {
-        const [updated] = await this.db
-          .update(popsMenuCategories)
-          .set({ imageUrl: block.imageUrl, isActive: true, sortOrder: block.sortOrder })
-          .where(eq(popsMenuCategories.id, cat.id))
-          .returning();
-        if (updated) cat = updated;
-      }
+      const [cat] = await this.db
+        .insert(popsMenuCategories)
+        .values({
+          organizationId: branch.organizationId,
+          branchId: branch.id,
+          name: block.category,
+          imageUrl: block.imageUrl,
+          sortOrder: block.sortOrder,
+          isActive: true,
+        })
+        .returning();
       if (!cat) continue;
 
       let itemSort = 0;
       for (const item of block.items) {
-        const existingItem = await this.db
-          .select({ id: popsMenuItems.id, imageUrl: popsMenuItems.imageUrl })
-          .from(popsMenuItems)
-          .where(and(eq(popsMenuItems.branchId, branch.id), eq(popsMenuItems.name, item.name)))
-          .limit(1);
-        if (existingItem[0]) {
-          if (!existingItem[0].imageUrl) {
-            await this.db
-              .update(popsMenuItems)
-              .set({
-                imageUrl: item.imageUrl,
-                featured: item.featured ?? false,
-                isActive: true,
-                simplePrice: true,
-              })
-              .where(eq(popsMenuItems.id, existingItem[0].id));
-          }
-          itemSort += 1;
-          continue;
-        }
         await this.db.insert(popsMenuItems).values({
           organizationId: branch.organizationId,
           branchId: branch.id,
           categoryId: cat.id,
           name: item.name,
+          secondaryName: item.secondaryName ?? null,
           imageUrl: item.imageUrl,
           pricePkr: item.price,
           featured: item.featured ?? false,

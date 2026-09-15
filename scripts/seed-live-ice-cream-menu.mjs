@@ -1,61 +1,55 @@
 /**
- * Seed Ice Cream menu + photos on the live restaurant org.
+ * Seed Ice Cream menu for Shehryar (flyer prices). Prefer seed-shehryar-menu-from-flyer.mjs
+ * when photos are available.
+ *
  * Usage: node scripts/seed-live-ice-cream-menu.mjs
  */
 const API = (process.env.LIVE_API_URL ?? "https://backend-system-production-28a3.up.railway.app").replace(/\/$/, "");
-const EMAIL = process.env.SEED_USER_EMAIL ?? "admin.restaurant@pops.demo";
-const PASSWORD = process.env.SEED_USER_PASSWORD ?? "Owner@12345";
-const BRANCH = process.env.SEED_BRANCH_CODE ?? "REST-HQ";
+const EMAIL = process.env.SEED_USER_EMAIL ?? "Admin@shehryar.com";
+const PASSWORD = process.env.SEED_USER_PASSWORD ?? "Admin123@";
+const BRANCH = process.env.SEED_BRANCH_CODE ?? "MAIN";
 
 const MENU = [
   {
-    category: "Scoops",
+    category: "Flavors",
     sortOrder: 10,
-    imageUrl: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=400&q=60",
     items: [
-      { name: "Chocolate Scoop", price: 350, featured: true, imageUrl: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=400&q=60" },
-      { name: "Vanilla Scoop", price: 320, imageUrl: "https://images.unsplash.com/photo-1570197788417-0e82375c9371?auto=format&fit=crop&w=400&q=60" },
-      { name: "Strawberry Scoop", price: 340, featured: true, imageUrl: "https://images.unsplash.com/photo-1633933358116-a27b902fad35?auto=format&fit=crop&w=400&q=60" },
-      { name: "Pistachio Scoop", price: 380, imageUrl: "https://images.unsplash.com/photo-1501443762994-82bd5dace89a?auto=format&fit=crop&w=400&q=60" },
-    ],
-  },
-  {
-    category: "Sundaes",
-    sortOrder: 20,
-    imageUrl: "https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=400&q=60",
-    items: [
-      { name: "Hot Fudge Sundae", price: 650, featured: true, imageUrl: "https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=400&q=60" },
-      { name: "Banana Split", price: 720, imageUrl: "https://images.unsplash.com/photo-1488900128323-21503983a07e?auto=format&fit=crop&w=400&q=60" },
-      { name: "Brownie Sundae", price: 690, imageUrl: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?auto=format&fit=crop&w=400&q=60" },
-    ],
-  },
-  {
-    category: "Shakes",
-    sortOrder: 30,
-    imageUrl: "https://images.unsplash.com/photo-1572490122747-3968b75cc699?auto=format&fit=crop&w=400&q=60",
-    items: [
-      { name: "Chocolate Shake", price: 480, imageUrl: "https://images.unsplash.com/photo-1572490122747-3968b75cc699?auto=format&fit=crop&w=400&q=60" },
-      { name: "Strawberry Shake", price: 470, featured: true, imageUrl: "https://images.unsplash.com/photo-1579954115545-a95591f28bfc?auto=format&fit=crop&w=400&q=60" },
-      { name: "Mango Shake", price: 490, imageUrl: "https://images.unsplash.com/photo-1546173159-315724a31696?auto=format&fit=crop&w=400&q=60" },
+      { name: "Kulfa", secondaryName: "قلفہ", price: 70, featured: true },
+      { name: "Pista", secondaryName: "پستہ", price: 70, featured: true },
+      { name: "Chocolate", secondaryName: "چاکلیٹ", price: 70, featured: true },
+      { name: "Chaska", secondaryName: "چسکا", price: 70, featured: true },
+      { name: "Mango", secondaryName: "مینگو", price: 70, featured: true },
+      { name: "Tutti Frutti", secondaryName: "ٹوٹی فروٹی", price: 70, featured: true },
+      { name: "Orange", secondaryName: "اورنج فلیور", price: 70, featured: true },
+      { name: "Vanilla", secondaryName: "ونیلا فلیور", price: 70, featured: true },
     ],
   },
   {
     category: "Cones",
-    sortOrder: 40,
-    imageUrl: "https://images.unsplash.com/photo-1497034825429-c343d7c6a68f?auto=format&fit=crop&w=400&q=60",
+    sortOrder: 20,
     items: [
-      { name: "Vanilla Cone", price: 280, imageUrl: "https://images.unsplash.com/photo-1497034825429-c343d7c6a68f?auto=format&fit=crop&w=400&q=60" },
-      { name: "Chocolate Dip Cone", price: 320, featured: true, imageUrl: "https://images.unsplash.com/photo-1505394033641-40c6ad1178d7?auto=format&fit=crop&w=400&q=60" },
-      { name: "Waffle Cone Duo", price: 420, imageUrl: "https://images.unsplash.com/photo-1488900128323-21503983a07e?auto=format&fit=crop&w=400&q=60" },
+      { name: "Single Cone Scoop", secondaryName: "سنگل کون", price: 80, featured: true },
+      { name: "Double Cone Scoop", secondaryName: "ڈبل کون", price: 150, featured: true },
     ],
   },
   {
-    category: "Cakes",
-    sortOrder: 50,
-    imageUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=400&q=60",
+    category: "Cups",
+    sortOrder: 30,
     items: [
-      { name: "Ice Cream Cake Slice", price: 550, imageUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=400&q=60" },
-      { name: "Cheesecake Cup", price: 520, imageUrl: "https://images.unsplash.com/photo-1533134242443-d4fd215305ad?auto=format&fit=crop&w=400&q=60" },
+      { name: "One Scoop", secondaryName: "ایک اسکوپ", price: 70, featured: true },
+      { name: "Two Scoops", secondaryName: "دو اسکوپ", price: 140 },
+      { name: "Three Scoops", secondaryName: "تین اسکوپ", price: 210 },
+      { name: "Four Scoops", secondaryName: "چار اسکوپ", price: 280 },
+    ],
+  },
+  {
+    category: "Family Packs",
+    sortOrder: 40,
+    items: [
+      { name: "Six Scoops", secondaryName: "چھ اسکوپ", price: 420 },
+      { name: "Eight Scoops", secondaryName: "آٹھ اسکوپ", price: 560 },
+      { name: "Ten Scoops", secondaryName: "دس اسکوپ", price: 700, featured: true },
+      { name: "Twelve Scoops", secondaryName: "بارہ اسکوپ", price: 840, featured: true },
     ],
   },
 ];
@@ -96,18 +90,10 @@ for (const block of MENU) {
     cat = await api("POST", "/v1/menu/categories", token, {
       branchCode: BRANCH,
       name: block.category,
-      imageUrl: block.imageUrl,
       sortOrder: block.sortOrder,
     });
     cats.set(block.category.toLowerCase(), cat);
     console.log("category", block.category);
-  } else if (!cat.imageUrl) {
-    cat = await api("PATCH", `/v1/menu/categories/${cat.id}`, token, {
-      imageUrl: block.imageUrl,
-      isActive: true,
-      sortOrder: block.sortOrder,
-    });
-    cats.set(block.category.toLowerCase(), cat);
   }
 
   const existingItems = new Set(
@@ -122,19 +108,14 @@ for (const block of MENU) {
       branchCode: BRANCH,
       categoryId: cat.id,
       name: item.name,
-      imageUrl: item.imageUrl,
+      secondaryName: item.secondaryName,
       price: item.price,
       featured: item.featured ?? false,
       simplePrice: true,
     });
     existingItems.add(item.name.toLowerCase());
-    console.log("item", item.name);
+    console.log("item", item.name, item.price);
   }
 }
 
-const after = await api("GET", `/v1/menu?branchCode=${encodeURIComponent(BRANCH)}`, token);
-const ice = (after.categories ?? []).filter((c) =>
-  ["scoops", "sundaes", "shakes", "cones", "cakes"].includes(String(c.name).toLowerCase()),
-);
-console.log("ice cream categories", ice.map((c) => c.name).join(", "));
-console.log("done");
+console.log("done — prefer seed-shehryar-menu-from-flyer.mjs for photo uploads");

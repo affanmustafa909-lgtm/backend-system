@@ -13,14 +13,14 @@ const LINES = [
   ["نقد کریم کے پیسے", "Cash for cream", 2500],
   ["چینی پاؤڈر", "Sugar powder", 1200],
   ["برف", "Ice", 800],
-  ["پیٹرول", "Petrol", 1500],
+  ["پٹرول", "Petrol", 1500],
   ["روٹی", "Roti", 400],
-  ["ڈیماٹ آئسکریم", "D-Mat ice cream", 3000],
+  ["ڈائمنڈ آئسکریم", "Diamond ice cream", 3000],
   ["پرچون رعایت", "Retail discount", 500],
   ["صابن + صافی", "Soap + cloth", 350],
   ["کپ", "Cups", 2000],
   ["چیکنگ + ضائع", "Checking + waste", 300],
-  ["فینیل + پٹی + برش", "Phenyl + strip + brush", 450],
+  ["فینیل + پولی + برش", "Phenyl + poly + brush", 450],
 ];
 
 async function main() {
