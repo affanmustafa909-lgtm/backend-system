@@ -40,6 +40,21 @@ export function mapMedicineRow(
   minSalePrice: number;
   maxRetailPrice: number;
   taxPct: number;
+  extraTaxPct: number;
+  companyProductCode: string | null;
+  saleOnTradePrice: boolean;
+  schemeDisc1Pct: number;
+  schemeDisc2Pct: number;
+  schemeQty: number;
+  schemeBonusQty: number;
+  discOnRetailPct: number;
+  salesTaxType: string | null;
+  extSalesTaxType: string | null;
+  fbrProductType: string | null;
+  advTaxEnabled: boolean;
+  sortOrder: number;
+  locked: boolean;
+  holdQty: number;
   reorderLevel: number;
   suggestedReorderQty: number;
   currentStock: number;
@@ -77,6 +92,21 @@ export function mapMedicineRow(
     minSalePrice: m.minSalePricePkr,
     maxRetailPrice: m.maxRetailPricePkr,
     taxPct: m.taxPct,
+    extraTaxPct: m.extraTaxPct,
+    companyProductCode: m.companyProductCode,
+    saleOnTradePrice: m.saleOnTradePrice,
+    schemeDisc1Pct: m.schemeDisc1Pct,
+    schemeDisc2Pct: m.schemeDisc2Pct,
+    schemeQty: m.schemeQty,
+    schemeBonusQty: m.schemeBonusQty,
+    discOnRetailPct: m.discOnRetailPct,
+    salesTaxType: m.salesTaxType,
+    extSalesTaxType: m.extSalesTaxType,
+    fbrProductType: m.fbrProductType,
+    advTaxEnabled: m.advTaxEnabled,
+    sortOrder: m.sortOrder,
+    locked: m.locked,
+    holdQty: m.holdQty,
     reorderLevel: m.reorderLevel,
     suggestedReorderQty: m.suggestedReorderQty,
     currentStock: m.currentStock,

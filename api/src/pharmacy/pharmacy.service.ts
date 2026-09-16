@@ -1234,6 +1234,34 @@ export class PharmacyService implements OnModuleInit {
           isControlled: input.isControlled ?? false,
           prescriptionRequired: input.prescriptionRequired ?? false,
           companyId: input.companyId ?? null,
+          genericId: input.genericId ?? null,
+          brandId: input.brandId ?? null,
+          categoryId: input.categoryId ?? null,
+          dosageFormId: input.dosageFormId ?? null,
+          unitId: input.unitId ?? null,
+          taxProfileId: input.taxProfileId ?? null,
+          preferredWarehouseId: input.preferredWarehouseId ?? null,
+          minStock: Math.round(input.minStock ?? 0),
+          maxStock: Math.round(input.maxStock ?? 0),
+          batchTrackingEnabled: input.batchTrackingEnabled ?? true,
+          expiryTrackingEnabled: input.expiryTrackingEnabled ?? true,
+          fefoEnabled: input.fefoEnabled ?? true,
+          restrictedSale: input.restrictedSale ?? false,
+          companyProductCode: input.companyProductCode?.trim() || null,
+          saleOnTradePrice: input.saleOnTradePrice ?? false,
+          schemeDisc1Pct: Math.round(input.schemeDisc1Pct ?? 0),
+          schemeDisc2Pct: Math.round(input.schemeDisc2Pct ?? 0),
+          schemeQty: Math.round(input.schemeQty ?? 0),
+          schemeBonusQty: Math.round(input.schemeBonusQty ?? 0),
+          discOnRetailPct: Math.round(input.discOnRetailPct ?? 0),
+          extraTaxPct: Math.round(input.extraTaxPct ?? 0),
+          salesTaxType: input.salesTaxType?.trim() || null,
+          extSalesTaxType: input.extSalesTaxType?.trim() || null,
+          fbrProductType: input.fbrProductType?.trim() || null,
+          advTaxEnabled: input.advTaxEnabled ?? false,
+          sortOrder: Math.round(input.sortOrder ?? 0),
+          locked: input.locked ?? false,
+          holdQty: Math.round(input.holdQty ?? 0),
           status: input.status?.trim() || "active",
           warningsJson: stringifyJsonArray(input.warnings),
           instructionsJson: stringifyJsonArray(input.instructions),
@@ -1390,6 +1418,50 @@ export class PharmacyService implements OnModuleInit {
         prescriptionRequired:
           input.prescriptionRequired !== undefined ? input.prescriptionRequired : existing.prescriptionRequired,
         companyId: input.companyId !== undefined ? input.companyId || null : existing.companyId,
+        genericId: input.genericId !== undefined ? input.genericId || null : existing.genericId,
+        brandId: input.brandId !== undefined ? input.brandId || null : existing.brandId,
+        categoryId: input.categoryId !== undefined ? input.categoryId || null : existing.categoryId,
+        dosageFormId: input.dosageFormId !== undefined ? input.dosageFormId || null : existing.dosageFormId,
+        unitId: input.unitId !== undefined ? input.unitId || null : existing.unitId,
+        taxProfileId: input.taxProfileId !== undefined ? input.taxProfileId || null : existing.taxProfileId,
+        preferredWarehouseId:
+          input.preferredWarehouseId !== undefined
+            ? input.preferredWarehouseId || null
+            : existing.preferredWarehouseId,
+        minStock: input.minStock !== undefined ? Math.round(input.minStock) : existing.minStock,
+        maxStock: input.maxStock !== undefined ? Math.round(input.maxStock) : existing.maxStock,
+        batchTrackingEnabled:
+          input.batchTrackingEnabled !== undefined ? input.batchTrackingEnabled : existing.batchTrackingEnabled,
+        expiryTrackingEnabled:
+          input.expiryTrackingEnabled !== undefined ? input.expiryTrackingEnabled : existing.expiryTrackingEnabled,
+        fefoEnabled: input.fefoEnabled !== undefined ? input.fefoEnabled : existing.fefoEnabled,
+        restrictedSale: input.restrictedSale !== undefined ? input.restrictedSale : existing.restrictedSale,
+        companyProductCode:
+          input.companyProductCode !== undefined
+            ? input.companyProductCode.trim() || null
+            : existing.companyProductCode,
+        saleOnTradePrice:
+          input.saleOnTradePrice !== undefined ? input.saleOnTradePrice : existing.saleOnTradePrice,
+        schemeDisc1Pct:
+          input.schemeDisc1Pct !== undefined ? Math.round(input.schemeDisc1Pct) : existing.schemeDisc1Pct,
+        schemeDisc2Pct:
+          input.schemeDisc2Pct !== undefined ? Math.round(input.schemeDisc2Pct) : existing.schemeDisc2Pct,
+        schemeQty: input.schemeQty !== undefined ? Math.round(input.schemeQty) : existing.schemeQty,
+        schemeBonusQty:
+          input.schemeBonusQty !== undefined ? Math.round(input.schemeBonusQty) : existing.schemeBonusQty,
+        discOnRetailPct:
+          input.discOnRetailPct !== undefined ? Math.round(input.discOnRetailPct) : existing.discOnRetailPct,
+        extraTaxPct: input.extraTaxPct !== undefined ? Math.round(input.extraTaxPct) : existing.extraTaxPct,
+        salesTaxType:
+          input.salesTaxType !== undefined ? input.salesTaxType.trim() || null : existing.salesTaxType,
+        extSalesTaxType:
+          input.extSalesTaxType !== undefined ? input.extSalesTaxType.trim() || null : existing.extSalesTaxType,
+        fbrProductType:
+          input.fbrProductType !== undefined ? input.fbrProductType.trim() || null : existing.fbrProductType,
+        advTaxEnabled: input.advTaxEnabled !== undefined ? input.advTaxEnabled : existing.advTaxEnabled,
+        sortOrder: input.sortOrder !== undefined ? Math.round(input.sortOrder) : existing.sortOrder,
+        locked: input.locked !== undefined ? input.locked : existing.locked,
+        holdQty: input.holdQty !== undefined ? Math.round(input.holdQty) : existing.holdQty,
         status: input.status !== undefined ? input.status.trim() || existing.status : existing.status,
         warningsJson: input.warnings ? stringifyJsonArray(input.warnings) : existing.warningsJson,
         instructionsJson: input.instructions ? stringifyJsonArray(input.instructions) : existing.instructionsJson,

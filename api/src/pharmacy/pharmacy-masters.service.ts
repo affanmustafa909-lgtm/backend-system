@@ -1304,6 +1304,7 @@ export class PharmacyMastersService {
             id: pharmacyCategories.id,
             code: pharmacyCategories.code,
             name: pharmacyCategories.name,
+            parentId: pharmacyCategories.parentId,
           })
           .from(pharmacyCategories)
           .where(eq(pharmacyCategories.id, med.categoryId))
@@ -1438,6 +1439,21 @@ export class PharmacyMastersService {
         expiryTrackingEnabled: bool(body.expiryTrackingEnabled, existing.expiryTrackingEnabled),
         fefoEnabled: bool(body.fefoEnabled, existing.fefoEnabled),
         restrictedSale: bool(body.restrictedSale, existing.restrictedSale),
+        companyProductCode: str(body.companyProductCode, existing.companyProductCode),
+        saleOnTradePrice: bool(body.saleOnTradePrice, existing.saleOnTradePrice),
+        schemeDisc1Pct: num(body.schemeDisc1Pct, existing.schemeDisc1Pct),
+        schemeDisc2Pct: num(body.schemeDisc2Pct, existing.schemeDisc2Pct),
+        schemeQty: num(body.schemeQty, existing.schemeQty),
+        schemeBonusQty: num(body.schemeBonusQty, existing.schemeBonusQty),
+        discOnRetailPct: num(body.discOnRetailPct, existing.discOnRetailPct),
+        extraTaxPct: num(body.extraTaxPct, existing.extraTaxPct),
+        salesTaxType: str(body.salesTaxType, existing.salesTaxType),
+        extSalesTaxType: str(body.extSalesTaxType, existing.extSalesTaxType),
+        fbrProductType: str(body.fbrProductType, existing.fbrProductType),
+        advTaxEnabled: bool(body.advTaxEnabled, existing.advTaxEnabled),
+        sortOrder: num(body.sortOrder, existing.sortOrder),
+        locked: bool(body.locked, existing.locked),
+        holdQty: num(body.holdQty, existing.holdQty),
         status: typeof body.status === "string" ? this.normalizeStatus(body.status) : existing.status,
       })
       .where(eq(pharmacyMedicines.id, id))
