@@ -3068,19 +3068,37 @@ export class PharmacyErpService {
   async runDistributionReport(
     organizationId: string,
     reportId: string,
-    filters: { from?: string; to?: string; cityId?: string; areaId?: string; branchCode?: string },
+    filters: {
+      from?: string;
+      to?: string;
+      cityId?: string;
+      areaId?: string;
+      branchCode?: string;
+      companyId?: string;
+      salesmanIds?: string[];
+    },
   ) {
     const branch = filters.branchCode?.trim()
       ? await this.resolveBranch(organizationId, filters.branchCode.trim())
       : null;
     const from = filters.from?.trim() || undefined;
     const to = filters.to?.trim() || undefined;
+    const companyId = filters.companyId?.trim() || undefined;
+    const salesmanIdSet = new Set(
+      (filters.salesmanIds ?? []).map((s) => s.trim()).filter(Boolean),
+    );
+    const hasSalesmanFilter = salesmanIdSet.size > 0;
 
     if (reportId === "daily-sales") {
       const conds = [eq(pharmacyDistOrders.organizationId, organizationId)];
       if (branch) conds.push(eq(pharmacyDistOrders.branchId, branch.id));
       if (from) conds.push(gte(pharmacyDistOrders.createdAt, new Date(`${from}T00:00:00.000Z`)));
       if (to) conds.push(lte(pharmacyDistOrders.createdAt, new Date(`${to}T23:59:59.999Z`)));
+      if (hasSalesmanFilter) {
+        conds.push(
+          inArray(pharmacyDistOrders.salesmanEmployeeId, [...salesmanIdSet]),
+        );
+      }
       const rows = await this.db
         .select({
           orderNumber: pharmacyDistOrders.orderNumber,
@@ -3088,6 +3106,7 @@ export class PharmacyErpService {
           totalPkr: pharmacyDistOrders.totalPkr,
           createdAt: pharmacyDistOrders.createdAt,
           tradeCustomerId: pharmacyDistOrders.tradeCustomerId,
+          salesmanEmployeeId: pharmacyDistOrders.salesmanEmployeeId,
         })
         .from(pharmacyDistOrders)
         .where(and(...conds))
@@ -3114,6 +3133,37 @@ export class PharmacyErpService {
             .map((c) => c.id),
         );
         filtered = rows.filter((r) => ok.has(r.tradeCustomerId));
+      }
+      if (companyId) {
+        const lines = await this.db
+          .select({
+            orderId: pharmacyDistOrderLines.orderId,
+            medicineId: pharmacyDistOrderLines.medicineId,
+          })
+          .from(pharmacyDistOrderLines)
+          .innerJoin(pharmacyDistOrders, eq(pharmacyDistOrderLines.orderId, pharmacyDistOrders.id))
+          .where(eq(pharmacyDistOrders.organizationId, organizationId))
+          .limit(8000);
+        const meds = await this.db
+          .select({ id: pharmacyMedicines.id, companyId: pharmacyMedicines.companyId })
+          .from(pharmacyMedicines)
+          .where(eq(pharmacyMedicines.organizationId, organizationId))
+          .limit(5000);
+        const medCo = new Map(meds.map((m) => [m.id, m.companyId]));
+        const orderOk = new Set<string>();
+        for (const l of lines) {
+          if (medCo.get(l.medicineId) === companyId) orderOk.add(l.orderId);
+        }
+        const orderByNumber = await this.db
+          .select({ id: pharmacyDistOrders.id, orderNumber: pharmacyDistOrders.orderNumber })
+          .from(pharmacyDistOrders)
+          .where(eq(pharmacyDistOrders.organizationId, organizationId))
+          .limit(2000);
+        const numToId = new Map(orderByNumber.map((o) => [o.orderNumber, o.id]));
+        filtered = filtered.filter((r) => {
+          const id = numToId.get(r.orderNumber);
+          return id ? orderOk.has(id) : false;
+        });
       }
       return {
         reportId,
@@ -3461,6 +3511,9 @@ export class PharmacyErpService {
         if (from && o.createdAt.toISOString().slice(0, 10) < from) continue;
         if (to && o.createdAt.toISOString().slice(0, 10) > to) continue;
         if (["cancelled", "draft"].includes(o.status)) continue;
+        if (hasSalesmanFilter) {
+          if (!o.salesmanEmployeeId || !salesmanIdSet.has(o.salesmanEmployeeId)) continue;
+        }
         const key = o.salesmanEmployeeId ?? "unassigned";
         const cur = map.get(key) ?? {
           salesman: o.salesmanEmployeeId ? empName.get(o.salesmanEmployeeId) ?? key : "Unassigned",
@@ -3487,6 +3540,7 @@ export class PharmacyErpService {
           lineTotalPkr: pharmacyDistOrderLines.lineTotalPkr,
           createdAt: pharmacyDistOrders.createdAt,
           status: pharmacyDistOrders.status,
+          salesmanEmployeeId: pharmacyDistOrders.salesmanEmployeeId,
         })
         .from(pharmacyDistOrderLines)
         .innerJoin(pharmacyDistOrders, eq(pharmacyDistOrderLines.orderId, pharmacyDistOrders.id))
@@ -3497,6 +3551,7 @@ export class PharmacyErpService {
           id: pharmacyMedicines.id,
           name: pharmacyMedicines.name,
           sku: pharmacyMedicines.sku,
+          companyId: pharmacyMedicines.companyId,
         })
         .from(pharmacyMedicines)
         .where(eq(pharmacyMedicines.organizationId, organizationId))
@@ -3507,7 +3562,11 @@ export class PharmacyErpService {
         if (from && r.createdAt.toISOString().slice(0, 10) < from) continue;
         if (to && r.createdAt.toISOString().slice(0, 10) > to) continue;
         if (["cancelled", "draft"].includes(r.status)) continue;
+        if (hasSalesmanFilter) {
+          if (!r.salesmanEmployeeId || !salesmanIdSet.has(r.salesmanEmployeeId)) continue;
+        }
         const med = medById.get(r.medicineId);
+        if (companyId && med?.companyId !== companyId) continue;
         const cur = map.get(r.medicineId) ?? {
           sku: med?.sku ?? "—",
           name: med?.name ?? r.medicineId,
@@ -3834,6 +3893,117 @@ export class PharmacyErpService {
       };
     }
 
+    if (reportId === "customer-sales") {
+      const orders = await this.db
+        .select({
+          tradeCustomerId: pharmacyDistOrders.tradeCustomerId,
+          salesmanEmployeeId: pharmacyDistOrders.salesmanEmployeeId,
+          totalPkr: pharmacyDistOrders.totalPkr,
+          status: pharmacyDistOrders.status,
+          createdAt: pharmacyDistOrders.createdAt,
+        })
+        .from(pharmacyDistOrders)
+        .where(eq(pharmacyDistOrders.organizationId, organizationId));
+      const customers = await this.listTradeCustomers(organizationId);
+      const areas = await this.listAreas(organizationId);
+      const areaById = new Map(areas.map((a) => [a.id, a]));
+      const custById = new Map(customers.map((c) => [c.id, c]));
+      const map = new Map<
+        string,
+        { code: string; name: string; area: string; orders: number; salesPkr: number; outstandingPkr: number }
+      >();
+      for (const o of orders) {
+        if (from && o.createdAt.toISOString().slice(0, 10) < from) continue;
+        if (to && o.createdAt.toISOString().slice(0, 10) > to) continue;
+        if (["cancelled", "draft"].includes(o.status)) continue;
+        if (hasSalesmanFilter) {
+          if (!o.salesmanEmployeeId || !salesmanIdSet.has(o.salesmanEmployeeId)) continue;
+        }
+        const cust = custById.get(o.tradeCustomerId);
+        if (!cust) continue;
+        if (filters.areaId && cust.areaId !== filters.areaId) continue;
+        if (filters.cityId) {
+          const area = cust.areaId ? areaById.get(cust.areaId) : null;
+          if (!area || area.cityId !== filters.cityId) continue;
+        }
+        const cur = map.get(cust.id) ?? {
+          code: cust.code,
+          name: cust.name,
+          area: cust.areaId ? areaById.get(cust.areaId)?.name ?? "—" : "—",
+          orders: 0,
+          salesPkr: 0,
+          outstandingPkr: cust.outstandingPkr ?? 0,
+        };
+        cur.orders += 1;
+        cur.salesPkr += o.totalPkr ?? 0;
+        map.set(cust.id, cur);
+      }
+      let rows = [...map.values()].sort((a, b) => b.salesPkr - a.salesPkr);
+      if (companyId) {
+        // Keep customers who bought this company — via order lines
+        const lines = await this.db
+          .select({
+            tradeCustomerId: pharmacyDistOrders.tradeCustomerId,
+            medicineId: pharmacyDistOrderLines.medicineId,
+            status: pharmacyDistOrders.status,
+            createdAt: pharmacyDistOrders.createdAt,
+            salesmanEmployeeId: pharmacyDistOrders.salesmanEmployeeId,
+            lineTotalPkr: pharmacyDistOrderLines.lineTotalPkr,
+          })
+          .from(pharmacyDistOrderLines)
+          .innerJoin(pharmacyDistOrders, eq(pharmacyDistOrderLines.orderId, pharmacyDistOrders.id))
+          .where(eq(pharmacyDistOrders.organizationId, organizationId))
+          .limit(8000);
+        const meds = await this.db
+          .select({ id: pharmacyMedicines.id, companyId: pharmacyMedicines.companyId })
+          .from(pharmacyMedicines)
+          .where(eq(pharmacyMedicines.organizationId, organizationId))
+          .limit(5000);
+        const medCo = new Map(meds.map((m) => [m.id, m.companyId]));
+        const byCust = new Map<string, { orders: Set<string>; salesPkr: number }>();
+        for (const l of lines) {
+          if (from && l.createdAt.toISOString().slice(0, 10) < from) continue;
+          if (to && l.createdAt.toISOString().slice(0, 10) > to) continue;
+          if (["cancelled", "draft"].includes(l.status)) continue;
+          if (hasSalesmanFilter) {
+            if (!l.salesmanEmployeeId || !salesmanIdSet.has(l.salesmanEmployeeId)) continue;
+          }
+          if (medCo.get(l.medicineId) !== companyId) continue;
+          const cur = byCust.get(l.tradeCustomerId) ?? { orders: new Set(), salesPkr: 0 };
+          cur.orders.add(`${l.tradeCustomerId}:${l.createdAt.toISOString().slice(0, 10)}`);
+          cur.salesPkr += l.lineTotalPkr ?? 0;
+          byCust.set(l.tradeCustomerId, cur);
+        }
+        rows = customers
+          .filter((c) => byCust.has(c.id))
+          .filter((c) => {
+            if (filters.areaId && c.areaId !== filters.areaId) return false;
+            if (filters.cityId) {
+              const area = c.areaId ? areaById.get(c.areaId) : null;
+              if (!area || area.cityId !== filters.cityId) return false;
+            }
+            return true;
+          })
+          .map((c) => {
+            const agg = byCust.get(c.id)!;
+            return {
+              code: c.code,
+              name: c.name,
+              area: c.areaId ? areaById.get(c.areaId)?.name ?? "—" : "—",
+              orders: agg.orders.size,
+              salesPkr: agg.salesPkr,
+              outstandingPkr: c.outstandingPkr ?? 0,
+            };
+          })
+          .sort((a, b) => b.salesPkr - a.salesPkr);
+      }
+      return {
+        reportId,
+        columns: ["code", "name", "area", "orders", "salesPkr", "outstandingPkr"],
+        rows,
+      };
+    }
+
     if (reportId === "company-performance") {
       const lines = await this.db
         .select({
@@ -3864,6 +4034,7 @@ export class PharmacyErpService {
         if (to && l.createdAt.toISOString().slice(0, 10) > to) continue;
         if (["cancelled", "draft"].includes(l.status)) continue;
         const cid = medCo.get(l.medicineId) ?? "unassigned";
+        if (companyId && cid !== companyId) continue;
         const cur = map.get(cid) ?? {
           company: cid === "unassigned" ? "Unassigned" : coName.get(cid) ?? cid,
           qty: 0,
@@ -4053,6 +4224,7 @@ export class PharmacyErpService {
         if (["cancelled", "draft"].includes(l.status)) continue;
         const med = medById.get(l.medicineId);
         const cid = med?.companyId ?? "unassigned";
+        if (companyId && cid !== companyId) continue;
         const key = `${cid}:${l.medicineId}`;
         const cur = map.get(key) ?? {
           company: cid === "unassigned" ? "Unassigned" : coName.get(cid) ?? cid,
@@ -4093,6 +4265,7 @@ export class PharmacyErpService {
       const map = new Map<string, { company: string; skus: number; stockQty: number }>();
       for (const m of meds) {
         const cid = m.companyId ?? "unassigned";
+        if (companyId && cid !== companyId) continue;
         const cur = map.get(cid) ?? {
           company: cid === "unassigned" ? "Unassigned" : coName.get(cid) ?? cid,
           skus: 0,
@@ -4162,12 +4335,16 @@ export class PharmacyErpService {
         if (from && l.createdAt.toISOString().slice(0, 10) < from) continue;
         if (to && l.createdAt.toISOString().slice(0, 10) > to) continue;
         if (["cancelled", "draft"].includes(l.status)) continue;
-        bump(medCo.get(l.medicineId), "salesPkr", l.lineTotalPkr ?? 0);
+        const cid = medCo.get(l.medicineId) ?? null;
+        if (companyId && cid !== companyId) continue;
+        bump(cid, "salesPkr", l.lineTotalPkr ?? 0);
       }
       for (const l of wrLines) {
         if (from && l.createdAt.toISOString().slice(0, 10) < from) continue;
         if (to && l.createdAt.toISOString().slice(0, 10) > to) continue;
-        bump(medCo.get(l.medicineId), "returnsPkr", l.lineTotalPkr ?? 0);
+        const cid = medCo.get(l.medicineId) ?? null;
+        if (companyId && cid !== companyId) continue;
+        bump(cid, "returnsPkr", l.lineTotalPkr ?? 0);
       }
       return {
         reportId,

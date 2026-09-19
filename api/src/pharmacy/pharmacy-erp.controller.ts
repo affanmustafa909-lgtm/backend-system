@@ -873,13 +873,21 @@ export class PharmacyErpController {
     @Query("cityId") cityId?: string,
     @Query("areaId") areaId?: string,
     @Query("branchCode") branchCode?: string,
+    @Query("companyId") companyId?: string,
+    @Query("salesmanIds") salesmanIds?: string,
   ) {
+    const salesmanIdList = (salesmanIds ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     return this.erp.runDistributionReport(user.organizationId, reportId, {
       from,
       to,
       cityId,
       areaId,
       branchCode,
+      companyId,
+      salesmanIds: salesmanIdList,
     });
   }
 
