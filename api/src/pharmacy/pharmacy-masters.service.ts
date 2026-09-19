@@ -768,6 +768,8 @@ export class PharmacyMastersService {
     }
     const str = (v: unknown, fallback: string | null) =>
       v === undefined ? fallback : typeof v === "string" ? v.trim() || null : fallback;
+    const num = (v: unknown, fallback: number) =>
+      v === undefined || v === null ? fallback : Math.round(Number(v));
     const [row] = await this.db
       .update(pharmacyCompanies)
       .set({
@@ -782,6 +784,16 @@ export class PharmacyMastersService {
         country: str(body.country, existing.country) ?? existing.country,
         licenseInfo: str(body.licenseInfo, existing.licenseInfo),
         notes: str(body.notes, existing.notes),
+        companyTitle: str(body.companyTitle, existing.companyTitle),
+        address2: str(body.address2, existing.address2),
+        bankName: str(body.bankName, existing.bankName),
+        bankBranch: str(body.bankBranch, existing.bankBranch),
+        transport: str(body.transport, existing.transport),
+        salesmanCommissionPct: num(body.salesmanCommissionPct, existing.salesmanCommissionPct),
+        showForAdvTax: str(body.showForAdvTax, existing.showForAdvTax),
+        productPolicyJson: str(body.productPolicyJson, existing.productPolicyJson),
+        discountPolicyJson: str(body.discountPolicyJson, existing.discountPolicyJson),
+        companyShiftingJson: str(body.companyShiftingJson, existing.companyShiftingJson),
         status:
           typeof body.status === "string" ? this.normalizeStatus(body.status) : existing.status,
       })
@@ -941,6 +953,21 @@ export class PharmacyMastersService {
       v === undefined ? fallback : typeof v === "string" ? v.trim() || null : fallback;
     const num = (v: unknown, fallback: number) =>
       v === undefined || v === null ? fallback : Math.round(Number(v));
+    const bool = (v: unknown, fallback: boolean) =>
+      v === undefined ? fallback : Boolean(v);
+    const dateStr = (v: unknown, fallback: string | null) => {
+      if (v === undefined) return fallback;
+      if (v === null || v === "") return null;
+      return typeof v === "string" ? v.trim() || null : fallback;
+    };
+    const visitingDaysJson =
+      body.visitingDays !== undefined
+        ? Array.isArray(body.visitingDays)
+          ? JSON.stringify(body.visitingDays)
+          : str(body.visitingDaysJson, existing.visitingDaysJson)
+        : body.visitingDaysJson !== undefined
+          ? str(body.visitingDaysJson, existing.visitingDaysJson)
+          : existing.visitingDaysJson;
     const [row] = await this.db
       .update(pharmacyTradeCustomers)
       .set({
@@ -969,6 +996,61 @@ export class PharmacyMastersService {
         priceLevel: typeof body.priceLevel === "string" ? body.priceLevel.trim() : existing.priceLevel,
         discountPct: num(body.discountPct, existing.discountPct),
         taxInfo: str(body.taxInfo, existing.taxInfo),
+        oldCode: str(body.oldCode, existing.oldCode),
+        partyType: str(body.partyType, existing.partyType),
+        speciality: str(body.speciality, existing.speciality),
+        storeType: str(body.storeType, existing.storeType),
+        contactPerson: str(body.contactPerson, existing.contactPerson),
+        nicNumber: str(body.nicNumber, existing.nicNumber),
+        ntnNumber: str(body.ntnNumber, existing.ntnNumber),
+        passportNo: str(body.passportNo, existing.passportNo),
+        landLine: str(body.landLine, existing.landLine),
+        customerClass: str(body.customerClass, existing.customerClass),
+        detailedAddress: str(body.detailedAddress, existing.detailedAddress),
+        cityName: str(body.cityName, existing.cityName),
+        regDate: dateStr(body.regDate, existing.regDate),
+        creditCategory: str(body.creditCategory, existing.creditCategory),
+        monthlySalesTargetPkr: num(body.monthlySalesTargetPkr, existing.monthlySalesTargetPkr),
+        modeOfPayment: str(body.modeOfPayment, existing.modeOfPayment),
+        timing: str(body.timing, existing.timing),
+        visitFrequency: num(body.visitFrequency, existing.visitFrequency),
+        visitingDaysJson,
+        termsOfPayment: str(body.termsOfPayment, existing.termsOfPayment),
+        license9No: str(body.license9No, existing.license9No),
+        license9Expiry: dateStr(body.license9Expiry, existing.license9Expiry),
+        license10No: str(body.license10No, existing.license10No),
+        license10Expiry: dateStr(body.license10Expiry, existing.license10Expiry),
+        license11No: str(body.license11No, existing.license11No),
+        license11Expiry: dateStr(body.license11Expiry, existing.license11Expiry),
+        advTaxType: str(body.advTaxType, existing.advTaxType),
+        isFocCustomer: bool(body.isFocCustomer, existing.isFocCustomer),
+        canDeductTax: bool(body.canDeductTax, existing.canDeductTax),
+        taxPct: num(body.taxPct, existing.taxPct),
+        imageUrl: str(body.imageUrl, existing.imageUrl),
+        discountPolicyJson: str(body.discountPolicyJson, existing.discountPolicyJson),
+        bonusPolicyJson: str(body.bonusPolicyJson, existing.bonusPolicyJson),
+        companyCreditLimitsJson: str(body.companyCreditLimitsJson, existing.companyCreditLimitsJson),
+        companyIdsJson: str(body.companyIdsJson, existing.companyIdsJson),
+        blockSalesJson: str(body.blockSalesJson, existing.blockSalesJson),
+        othersJson: str(body.othersJson, existing.othersJson),
+        locationLat: str(body.locationLat, existing.locationLat),
+        locationLng: str(body.locationLng, existing.locationLng),
+        locationNotes: str(body.locationNotes, existing.locationNotes),
+        accountType: str(body.accountType, existing.accountType),
+        companyCode: str(body.companyCode, existing.companyCode),
+        uniqueName: str(body.uniqueName, existing.uniqueName),
+        postalAddress: str(body.postalAddress, existing.postalAddress),
+        province: str(body.province, existing.province),
+        fax: str(body.fax, existing.fax),
+        partyMode: str(body.partyMode, existing.partyMode),
+        stxNo: str(body.stxNo, existing.stxNo),
+        sector: str(body.sector, existing.sector),
+        licenceNo: str(body.licenceNo, existing.licenceNo),
+        licenceExpiry: dateStr(body.licenceExpiry, existing.licenceExpiry),
+        activeTaxPayer: bool(body.activeTaxPayer, existing.activeTaxPayer),
+        incomeTaxExempt: bool(body.incomeTaxExempt, existing.incomeTaxExempt),
+        advanceTaxSummary: bool(body.advanceTaxSummary, existing.advanceTaxSummary),
+        invoiceWarranty: bool(body.invoiceWarranty, existing.invoiceWarranty),
         status:
           typeof body.status === "string" ? this.normalizeStatus(body.status) : existing.status,
       })
