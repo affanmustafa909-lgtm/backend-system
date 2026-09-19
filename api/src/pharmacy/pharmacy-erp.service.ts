@@ -3089,6 +3089,121 @@ export class PharmacyErpService {
     );
     const hasSalesmanFilter = salesmanIdSet.size > 0;
 
+    // ── Full sales detail (main Dist sales report) ──────────────────────────
+    if (reportId === "sales-report") {
+      const lines = await this.db
+        .select({
+          orderNumber: pharmacyDistOrders.orderNumber,
+          status: pharmacyDistOrders.status,
+          createdAt: pharmacyDistOrders.createdAt,
+          tradeCustomerId: pharmacyDistOrders.tradeCustomerId,
+          salesmanEmployeeId: pharmacyDistOrders.salesmanEmployeeId,
+          medicineId: pharmacyDistOrderLines.medicineId,
+          quantity: pharmacyDistOrderLines.quantity,
+          freeQuantity: pharmacyDistOrderLines.freeQuantity,
+          lineTotalPkr: pharmacyDistOrderLines.lineTotalPkr,
+        })
+        .from(pharmacyDistOrderLines)
+        .innerJoin(pharmacyDistOrders, eq(pharmacyDistOrderLines.orderId, pharmacyDistOrders.id))
+        .where(
+          and(
+            eq(pharmacyDistOrders.organizationId, organizationId),
+            ...(branch ? [eq(pharmacyDistOrders.branchId, branch.id)] : []),
+          ),
+        )
+        .orderBy(desc(pharmacyDistOrders.createdAt))
+        .limit(8000);
+
+      const customers = await this.listTradeCustomers(organizationId);
+      const areas = await this.listAreas(organizationId);
+      const areaById = new Map(areas.map((a) => [a.id, a]));
+      const custById = new Map(customers.map((c) => [c.id, c]));
+      const meds = await this.db
+        .select({
+          id: pharmacyMedicines.id,
+          name: pharmacyMedicines.name,
+          sku: pharmacyMedicines.sku,
+          companyId: pharmacyMedicines.companyId,
+        })
+        .from(pharmacyMedicines)
+        .where(eq(pharmacyMedicines.organizationId, organizationId))
+        .limit(5000);
+      const companies = await this.db
+        .select({ id: pharmacyCompanies.id, name: pharmacyCompanies.name })
+        .from(pharmacyCompanies)
+        .where(eq(pharmacyCompanies.organizationId, organizationId));
+      const emps = await this.db
+        .select({ id: popsEmployees.id, name: popsEmployees.displayName })
+        .from(popsEmployees)
+        .where(eq(popsEmployees.organizationId, organizationId))
+        .limit(500);
+      const medById = new Map(meds.map((m) => [m.id, m]));
+      const coName = new Map(companies.map((c) => [c.id, c.name]));
+      const empName = new Map(emps.map((e) => [e.id, e.name]));
+
+      const rows = lines
+        .filter((l) => {
+          if (from && l.createdAt.toISOString().slice(0, 10) < from) return false;
+          if (to && l.createdAt.toISOString().slice(0, 10) > to) return false;
+          if (["cancelled", "draft"].includes(l.status)) return false;
+          if (hasSalesmanFilter) {
+            if (!l.salesmanEmployeeId || !salesmanIdSet.has(l.salesmanEmployeeId)) return false;
+          }
+          const med = medById.get(l.medicineId);
+          if (companyId && med?.companyId !== companyId) return false;
+          const cust = custById.get(l.tradeCustomerId);
+          if (filters.areaId && cust?.areaId !== filters.areaId) return false;
+          if (filters.cityId) {
+            const area = cust?.areaId ? areaById.get(cust.areaId) : null;
+            if (!area || area.cityId !== filters.cityId) return false;
+          }
+          return true;
+        })
+        .map((l) => {
+          const med = medById.get(l.medicineId);
+          const cust = custById.get(l.tradeCustomerId);
+          const cid = med?.companyId ?? null;
+          return {
+            date: l.createdAt.toISOString().slice(0, 10),
+            orderNumber: l.orderNumber,
+            status: l.status,
+            customerCode: cust?.code ?? "—",
+            customerName: cust?.name ?? "—",
+            salesman: l.salesmanEmployeeId
+              ? empName.get(l.salesmanEmployeeId) ?? l.salesmanEmployeeId
+              : "Unassigned",
+            salesmanEmployeeId: l.salesmanEmployeeId,
+            company: cid ? coName.get(cid) ?? cid : "Unassigned",
+            companyId: cid,
+            sku: med?.sku ?? "—",
+            product: med?.name ?? l.medicineId,
+            qty: l.quantity ?? 0,
+            freeQty: l.freeQuantity ?? 0,
+            salesPkr: l.lineTotalPkr ?? 0,
+          };
+        })
+        .slice(0, 2000);
+
+      return {
+        reportId,
+        columns: [
+          "date",
+          "orderNumber",
+          "customerCode",
+          "customerName",
+          "salesman",
+          "company",
+          "sku",
+          "product",
+          "qty",
+          "freeQty",
+          "salesPkr",
+          "status",
+        ],
+        rows,
+      };
+    }
+
     if (reportId === "daily-sales") {
       const conds = [eq(pharmacyDistOrders.organizationId, organizationId)];
       if (branch) conds.push(eq(pharmacyDistOrders.branchId, branch.id));
