@@ -3165,13 +3165,23 @@ export class PharmacyErpService {
           return id ? orderOk.has(id) : false;
         });
       }
+      const emps = await this.db
+        .select({ id: popsEmployees.id, name: popsEmployees.displayName })
+        .from(popsEmployees)
+        .where(eq(popsEmployees.organizationId, organizationId))
+        .limit(500);
+      const empName = new Map(emps.map((e) => [e.id, e.name]));
       return {
         reportId,
-        columns: ["orderNumber", "status", "totalPkr", "createdAt"],
+        columns: ["orderNumber", "status", "totalPkr", "salesman", "createdAt"],
         rows: filtered.map((r) => ({
           orderNumber: r.orderNumber,
           status: r.status,
           totalPkr: r.totalPkr,
+          salesman: r.salesmanEmployeeId
+            ? empName.get(r.salesmanEmployeeId) ?? r.salesmanEmployeeId
+            : "Unassigned",
+          salesmanEmployeeId: r.salesmanEmployeeId,
           createdAt: r.createdAt,
         })),
       };
@@ -3305,6 +3315,7 @@ export class PharmacyErpService {
         .select({
           totalPkr: pharmacyDistOrders.totalPkr,
           tradeCustomerId: pharmacyDistOrders.tradeCustomerId,
+          salesmanEmployeeId: pharmacyDistOrders.salesmanEmployeeId,
           createdAt: pharmacyDistOrders.createdAt,
           status: pharmacyDistOrders.status,
         })
@@ -3321,6 +3332,9 @@ export class PharmacyErpService {
         if (from && o.createdAt.toISOString().slice(0, 10) < from) continue;
         if (to && o.createdAt.toISOString().slice(0, 10) > to) continue;
         if (["cancelled", "draft"].includes(o.status)) continue;
+        if (hasSalesmanFilter) {
+          if (!o.salesmanEmployeeId || !salesmanIdSet.has(o.salesmanEmployeeId)) continue;
+        }
         const cust = custById.get(o.tradeCustomerId);
         const area = cust?.areaId ? areaById.get(cust.areaId) : null;
         if (filters.cityId && area?.cityId !== filters.cityId) continue;
@@ -3343,6 +3357,7 @@ export class PharmacyErpService {
         .select({
           totalPkr: pharmacyDistOrders.totalPkr,
           tradeCustomerId: pharmacyDistOrders.tradeCustomerId,
+          salesmanEmployeeId: pharmacyDistOrders.salesmanEmployeeId,
           createdAt: pharmacyDistOrders.createdAt,
           status: pharmacyDistOrders.status,
         })
@@ -3357,6 +3372,9 @@ export class PharmacyErpService {
         if (from && o.createdAt.toISOString().slice(0, 10) < from) continue;
         if (to && o.createdAt.toISOString().slice(0, 10) > to) continue;
         if (["cancelled", "draft"].includes(o.status)) continue;
+        if (hasSalesmanFilter) {
+          if (!o.salesmanEmployeeId || !salesmanIdSet.has(o.salesmanEmployeeId)) continue;
+        }
         const cust = custById.get(o.tradeCustomerId);
         if (filters.areaId && cust?.areaId !== filters.areaId) continue;
         if (filters.cityId) {
@@ -4012,6 +4030,7 @@ export class PharmacyErpService {
           quantity: pharmacyDistOrderLines.quantity,
           status: pharmacyDistOrders.status,
           createdAt: pharmacyDistOrders.createdAt,
+          salesmanEmployeeId: pharmacyDistOrders.salesmanEmployeeId,
         })
         .from(pharmacyDistOrderLines)
         .innerJoin(pharmacyDistOrders, eq(pharmacyDistOrderLines.orderId, pharmacyDistOrders.id))
@@ -4033,6 +4052,9 @@ export class PharmacyErpService {
         if (from && l.createdAt.toISOString().slice(0, 10) < from) continue;
         if (to && l.createdAt.toISOString().slice(0, 10) > to) continue;
         if (["cancelled", "draft"].includes(l.status)) continue;
+        if (hasSalesmanFilter) {
+          if (!l.salesmanEmployeeId || !salesmanIdSet.has(l.salesmanEmployeeId)) continue;
+        }
         const cid = medCo.get(l.medicineId) ?? "unassigned";
         if (companyId && cid !== companyId) continue;
         const cur = map.get(cid) ?? {
