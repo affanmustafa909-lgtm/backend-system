@@ -1787,6 +1787,43 @@ export class PharmacyErpService {
     return { ...result.invoice, lines };
   }
 
+  /**
+   * POS fast path: approve (if needed) + Cash invoice in one HTTP round-trip.
+   * Skips warehouse pipeline hops (picking → packed → ready) that the sale window
+   * used to call sequentially — those are not required for invoicing.
+   */
+  async cashSettleDistOrder(organizationId: string, id: string, userId?: string) {
+    const order = await this.getDistOrder(organizationId, id);
+    if (order.status === "invoiced") {
+      const [invoice] = await this.db
+        .select()
+        .from(pharmacyDistInvoices)
+        .where(eq(pharmacyDistInvoices.orderId, id))
+        .limit(1);
+      if (invoice) {
+        const lines = await this.db
+          .select()
+          .from(pharmacyDistInvoiceLines)
+          .where(eq(pharmacyDistInvoiceLines.invoiceId, invoice.id));
+        return { ...invoice, lines, alreadySettled: true as const };
+      }
+    }
+    if (["draft", "submitted", "booked"].includes(order.status)) {
+      await this.approveDistOrder(organizationId, id);
+    } else if (
+      ![
+        "approved",
+        "stock_reserved",
+        "picking",
+        "packed",
+        "ready_for_dispatch",
+      ].includes(order.status)
+    ) {
+      throw new BadRequestException(`Cannot cash-settle order in status ${order.status}`);
+    }
+    return this.invoiceFromOrder(organizationId, id, userId, { paymentMethod: "Cash" });
+  }
+
   // ─── Deliveries ──────────────────────────────────────────────────────────
 
   async listDeliveries(organizationId: string, branchCode?: string) {

@@ -463,6 +463,13 @@ export class PharmacyErpController {
     return this.erp.invoiceFromOrder(user.organizationId, id, user.sub, body);
   }
 
+  /** POS: approve + cash invoice in one call (no warehouse pipeline hops). */
+  @Post("distribution/orders/:id/cash-settle")
+  @RequirePermissions("distribution.orders", "pops.inventory.manage", "sales.book")
+  cashSettleDistOrder(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string) {
+    return this.erp.cashSettleDistOrder(user.organizationId, id, user.sub);
+  }
+
   @Post("distribution/orders/:id/advance")
   @RequirePermissions("distribution.orders", "pops.inventory.manage")
   advanceDistOrder(
