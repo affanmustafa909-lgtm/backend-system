@@ -23,7 +23,9 @@ import {
   pharmacyCollections,
   pharmacyCompanies,
   pharmacyDeliveries,
+  pharmacyDeliveryLines,
   pharmacyDistricts,
+  pharmacyDrivers,
   pharmacyDivisions,
   pharmacyDistInvoiceLines,
   pharmacyDistInvoices,
@@ -56,6 +58,7 @@ import {
   pharmacyTargets,
   pharmacyTerritories,
   pharmacyTradeCustomers,
+  pharmacyVehicles,
   pharmacyVisits,
   pharmacyWarehouses,
   pharmacyWholesaleReturnLines,
@@ -4866,6 +4869,277 @@ export class PharmacyErpService {
             targetSalesPkr: r.targetSalesPkr,
             targetCollectionPkr: r.targetCollectionPkr,
           })),
+      };
+    }
+
+    if (reportId === "delivery-plan" || reportId === "delivery-plan-details") {
+      const conds = [eq(pharmacyDeliveries.organizationId, organizationId)];
+      if (branch) conds.push(eq(pharmacyDeliveries.branchId, branch.id));
+      if (from) conds.push(gte(pharmacyDeliveries.createdAt, new Date(`${from}T00:00:00.000Z`)));
+      if (to) conds.push(lte(pharmacyDeliveries.createdAt, new Date(`${to}T23:59:59.999Z`)));
+      const deliveries = await this.db
+        .select({
+          id: pharmacyDeliveries.id,
+          deliveryNumber: pharmacyDeliveries.deliveryNumber,
+          status: pharmacyDeliveries.status,
+          riderName: pharmacyDeliveries.riderName,
+          address: pharmacyDeliveries.address,
+          contactPhone: pharmacyDeliveries.contactPhone,
+          collectedPkr: pharmacyDeliveries.collectedPkr,
+          createdAt: pharmacyDeliveries.createdAt,
+          customerCode: pharmacyTradeCustomers.code,
+          customerName: pharmacyTradeCustomers.name,
+          routeName: pharmacyRoutes.name,
+          routeCode: pharmacyRoutes.code,
+          driverName: pharmacyDrivers.name,
+          vehicleNo: pharmacyVehicles.registrationNo,
+          orderNumber: pharmacyDistOrders.orderNumber,
+          invoiceNumber: pharmacyDistInvoices.invoiceNumber,
+        })
+        .from(pharmacyDeliveries)
+        .leftJoin(pharmacyTradeCustomers, eq(pharmacyTradeCustomers.id, pharmacyDeliveries.tradeCustomerId))
+        .leftJoin(pharmacyRoutes, eq(pharmacyRoutes.id, pharmacyDeliveries.routeId))
+        .leftJoin(pharmacyDrivers, eq(pharmacyDrivers.id, pharmacyDeliveries.driverId))
+        .leftJoin(pharmacyVehicles, eq(pharmacyVehicles.id, pharmacyDeliveries.vehicleId))
+        .leftJoin(pharmacyDistOrders, eq(pharmacyDistOrders.id, pharmacyDeliveries.orderId))
+        .leftJoin(pharmacyDistInvoices, eq(pharmacyDistInvoices.id, pharmacyDeliveries.invoiceId))
+        .where(and(...conds))
+        .orderBy(desc(pharmacyDeliveries.createdAt))
+        .limit(500);
+
+      const ids = deliveries.map((d) => d.id);
+      const lineRows =
+        ids.length === 0
+          ? []
+          : await this.db
+              .select({
+                deliveryId: pharmacyDeliveryLines.deliveryId,
+                productLabel: pharmacyDeliveryLines.productLabel,
+                batchNumber: pharmacyDeliveryLines.batchNumber,
+                quantity: pharmacyDeliveryLines.quantity,
+                deliveredQty: pharmacyDeliveryLines.deliveredQty,
+                returnedQty: pharmacyDeliveryLines.returnedQty,
+                sku: pharmacyMedicines.sku,
+                productName: pharmacyMedicines.name,
+              })
+              .from(pharmacyDeliveryLines)
+              .leftJoin(pharmacyMedicines, eq(pharmacyMedicines.id, pharmacyDeliveryLines.medicineId))
+              .where(inArray(pharmacyDeliveryLines.deliveryId, ids));
+
+      const headerOf = (d: (typeof deliveries)[number]) => ({
+        date: d.createdAt.toISOString().slice(0, 10),
+        deliveryNumber: d.deliveryNumber,
+        status: d.status,
+        customerCode: d.customerCode ?? "—",
+        customerName: d.customerName ?? "—",
+        route: d.routeName ? `${d.routeCode ?? ""} ${d.routeName}`.trim() : "—",
+        rider: d.driverName ?? d.riderName ?? "—",
+        vehicle: d.vehicleNo ?? "—",
+        orderNumber: d.orderNumber ?? "—",
+        invoiceNumber: d.invoiceNumber ?? "—",
+        phone: d.contactPhone ?? "—",
+        address: d.address ?? "—",
+        collectedPkr: d.collectedPkr ?? 0,
+      });
+
+      if (reportId === "delivery-plan") {
+        const totals = new Map<string, { lines: number; qty: number; deliveredQty: number; returnedQty: number }>();
+        for (const line of lineRows) {
+          const cur = totals.get(line.deliveryId) ?? { lines: 0, qty: 0, deliveredQty: 0, returnedQty: 0 };
+          cur.lines += 1;
+          cur.qty += line.quantity ?? 0;
+          cur.deliveredQty += line.deliveredQty ?? 0;
+          cur.returnedQty += line.returnedQty ?? 0;
+          totals.set(line.deliveryId, cur);
+        }
+        return {
+          reportId,
+          columns: [
+            "date",
+            "deliveryNumber",
+            "status",
+            "customerCode",
+            "customerName",
+            "route",
+            "rider",
+            "vehicle",
+            "orderNumber",
+            "invoiceNumber",
+            "phone",
+            "address",
+            "lines",
+            "qty",
+            "deliveredQty",
+            "returnedQty",
+            "collectedPkr",
+          ],
+          rows: deliveries.map((d) => {
+            const t = totals.get(d.id) ?? { lines: 0, qty: 0, deliveredQty: 0, returnedQty: 0 };
+            return { ...headerOf(d), ...t };
+          }),
+        };
+      }
+
+      const byDelivery = new Map(deliveries.map((d) => [d.id, d]));
+      const detailRows = lineRows
+        .map((line, index) => {
+          const d = byDelivery.get(line.deliveryId);
+          if (!d) return null;
+          return {
+            ...headerOf(d),
+            lineNo: index + 1,
+            sku: line.sku ?? "—",
+            product: line.productName ?? line.productLabel ?? "—",
+            batch: line.batchNumber ?? "—",
+            qty: line.quantity ?? 0,
+            deliveredQty: line.deliveredQty ?? 0,
+            returnedQty: line.returnedQty ?? 0,
+          };
+        })
+        .filter((row): row is NonNullable<typeof row> => row != null);
+
+      const withLines = new Set(lineRows.map((l) => l.deliveryId));
+      for (const d of deliveries) {
+        if (withLines.has(d.id)) continue;
+        detailRows.push({
+          ...headerOf(d),
+          lineNo: detailRows.length + 1,
+          sku: "—",
+          product: "—",
+          batch: "—",
+          qty: 0,
+          deliveredQty: 0,
+          returnedQty: 0,
+        });
+      }
+
+      return {
+        reportId,
+        columns: [
+          "date",
+          "deliveryNumber",
+          "status",
+          "customerCode",
+          "customerName",
+          "route",
+          "rider",
+          "vehicle",
+          "orderNumber",
+          "sku",
+          "product",
+          "batch",
+          "qty",
+          "deliveredQty",
+          "returnedQty",
+        ],
+        rows: detailRows,
+      };
+    }
+
+    if (reportId === "customer-credit") {
+      const customers = await this.listTradeCustomers(organizationId);
+      const areas = await this.listAreas(organizationId);
+      const cities = await this.listCities(organizationId);
+      const emps = await this.db
+        .select({ id: popsEmployees.id, name: popsEmployees.displayName })
+        .from(popsEmployees)
+        .where(eq(popsEmployees.organizationId, organizationId))
+        .limit(500);
+      const areaById = new Map(areas.map((a) => [a.id, a]));
+      const cityById = new Map(cities.map((c) => [c.id, c]));
+      const empName = new Map(emps.map((e) => [e.id, e.name]));
+      const receiptConds = [eq(pharmacyCollections.organizationId, organizationId)];
+      if (branch) receiptConds.push(eq(pharmacyCollections.branchId, branch.id));
+      if (from) receiptConds.push(gte(pharmacyCollections.createdAt, new Date(`${from}T00:00:00.000Z`)));
+      if (to) receiptConds.push(lte(pharmacyCollections.createdAt, new Date(`${to}T23:59:59.999Z`)));
+      const receipts = await this.db
+        .select({
+          tradeCustomerId: pharmacyCollections.tradeCustomerId,
+          amountPkr: pharmacyCollections.amountPkr,
+        })
+        .from(pharmacyCollections)
+        .where(and(...receiptConds));
+      const receivedByCustomer = new Map<string, number>();
+      for (const receipt of receipts) {
+        const id = receipt.tradeCustomerId;
+        if (!id) continue;
+        receivedByCustomer.set(id, (receivedByCustomer.get(id) ?? 0) + (receipt.amountPkr ?? 0));
+      }
+      const rows = customers
+        .filter((c) => {
+          if (branch && c.branchId && c.branchId !== branch.id) return false;
+          if (filters.areaId && c.areaId !== filters.areaId) return false;
+          if (filters.cityId) {
+            const area = c.areaId ? areaById.get(c.areaId) : null;
+            const cityId = c.cityId ?? area?.cityId ?? null;
+            if (cityId !== filters.cityId) return false;
+          }
+          if (hasSalesmanFilter) {
+            if (!c.salesmanEmployeeId || !salesmanIdSet.has(c.salesmanEmployeeId)) return false;
+          }
+          return true;
+        })
+        .map((c) => {
+          const limit = c.creditLimitPkr ?? 0;
+          const outstanding = c.outstandingPkr ?? 0;
+          const received = receivedByCustomer.get(c.id) ?? 0;
+          const area = c.areaId ? areaById.get(c.areaId) : null;
+          const cityId = c.cityId ?? area?.cityId ?? null;
+          return {
+            code: c.code,
+            name: c.name,
+            businessName: c.businessName ?? "—",
+            phone: c.phone ?? "—",
+            city: c.cityName ?? (cityId ? cityById.get(cityId)?.name ?? "—" : "—"),
+            area: area?.name ?? "—",
+            salesman: c.salesmanEmployeeId ? empName.get(c.salesmanEmployeeId) ?? "—" : "—",
+            creditCategory: c.creditCategory ?? "—",
+            creditLimitPkr: limit,
+            creditDays: c.creditDays ?? 0,
+            receivedPkr: received,
+            leftToReceivePkr: outstanding,
+            outstandingPkr: outstanding,
+            availableCreditPkr: limit - outstanding,
+            overByPkr: outstanding > limit ? outstanding - limit : 0,
+            openingBalancePkr: c.openingBalancePkr ?? 0,
+            termsOfPayment: c.termsOfPayment ?? "—",
+            modeOfPayment: c.modeOfPayment ?? "—",
+            monthlySalesTargetPkr: c.monthlySalesTargetPkr ?? 0,
+            discountPct: c.discountPct ?? 0,
+            priceLevel: c.priceLevel ?? "—",
+            status: c.status,
+            companyCredit: c.companyCreditLimitsJson ?? "—",
+          };
+        })
+        .sort((a, b) => b.outstandingPkr - a.outstandingPkr);
+      return {
+        reportId,
+        columns: [
+          "code",
+          "name",
+          "businessName",
+          "phone",
+          "city",
+          "area",
+          "salesman",
+          "creditCategory",
+          "creditLimitPkr",
+          "creditDays",
+          "receivedPkr",
+          "leftToReceivePkr",
+          "outstandingPkr",
+          "availableCreditPkr",
+          "overByPkr",
+          "openingBalancePkr",
+          "termsOfPayment",
+          "modeOfPayment",
+          "monthlySalesTargetPkr",
+          "discountPct",
+          "priceLevel",
+          "status",
+          "companyCredit",
+        ],
+        rows,
       };
     }
 
