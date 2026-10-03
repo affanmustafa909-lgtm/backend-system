@@ -165,6 +165,15 @@ export class AuthService implements OnModuleInit {
         branchName: "Retail HQ",
         city: "Multan",
       },
+      {
+        systemType: "education",
+        name: "EducationFlow Demo",
+        adminEmail: "admin.education@pops.demo",
+        adminName: "Education Admin",
+        branchCode: "EDU-HQ",
+        branchName: "Main Campus",
+        city: "Islamabad",
+      },
     ];
 
     for (const biz of systemBusinesses) {

@@ -19,6 +19,7 @@ export * from "./closing";
 export * from "./pharmacy";
 export * from "./pharmacy-erp";
 export * from "./store";
+export * from "./education";
 export * from "./security";
 export * from "./refresh-tokens";
 export * from "./tax-authority";

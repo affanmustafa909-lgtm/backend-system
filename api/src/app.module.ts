@@ -20,6 +20,7 @@ import { SyncModule } from "./sync/sync.module";
 import { ClosingModule } from "./closing/closing.module";
 import { PharmacyModule } from "./pharmacy/pharmacy.module";
 import { StoreModule } from "./store/store.module";
+import { EducationModule } from "./education/education.module";
 import { SecurityModule } from "./security/security.module";
 import { TablesModule } from "./tables/tables.module";
 import { UsersModule } from "./users/users.module";
@@ -66,6 +67,7 @@ import { ReportsModule } from "./reports/reports.module";
     ClosingModule,
     PharmacyModule,
     StoreModule,
+    EducationModule,
     TaxAuthorityModule,
     PrintingModule,
     ReportsModule,

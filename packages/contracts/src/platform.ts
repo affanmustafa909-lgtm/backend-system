@@ -13,6 +13,7 @@ export const SYSTEM_TYPES = [
   "general_store",
   "grocery",
   "retail",
+  "education",
 ] as const;
 
 export const systemTypeSchema = z.enum(SYSTEM_TYPES);
@@ -26,6 +27,7 @@ export const SYSTEM_TYPE_LABELS: Record<SystemType, string> = {
   general_store: "General Store POS",
   grocery: "Grocery POS",
   retail: "Retail POS",
+  education: "EducationFlow ERP",
 };
 
 /** Restaurant POS APIs also serve Ice Cream Bar tenants. */
