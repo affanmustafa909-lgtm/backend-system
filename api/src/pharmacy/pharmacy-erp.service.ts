@@ -2225,11 +2225,55 @@ export class PharmacyErpService {
   }
 
   async listSchemes(organizationId: string) {
-    return this.db
-      .select()
-      .from(pharmacySchemes)
-      .where(eq(pharmacySchemes.organizationId, organizationId))
-      .orderBy(desc(pharmacySchemes.createdAt));
+    // Prefer full row (incl. tradeCustomerId). Fall back if DB has not yet added that column.
+    try {
+      return await this.db
+        .select({
+          id: pharmacySchemes.id,
+          organizationId: pharmacySchemes.organizationId,
+          name: pharmacySchemes.name,
+          code: pharmacySchemes.code,
+          schemeType: pharmacySchemes.schemeType,
+          medicineId: pharmacySchemes.medicineId,
+          companyId: pharmacySchemes.companyId,
+          tradeCustomerId: pharmacySchemes.tradeCustomerId,
+          buyQty: pharmacySchemes.buyQty,
+          freeQty: pharmacySchemes.freeQty,
+          startDate: pharmacySchemes.startDate,
+          endDate: pharmacySchemes.endDate,
+          priority: pharmacySchemes.priority,
+          status: pharmacySchemes.status,
+          createdAt: pharmacySchemes.createdAt,
+        })
+        .from(pharmacySchemes)
+        .where(eq(pharmacySchemes.organizationId, organizationId))
+        .orderBy(desc(pharmacySchemes.createdAt));
+    } catch {
+      const rows = await this.db
+        .select({
+          id: pharmacySchemes.id,
+          organizationId: pharmacySchemes.organizationId,
+          name: pharmacySchemes.name,
+          schemeType: pharmacySchemes.schemeType,
+          medicineId: pharmacySchemes.medicineId,
+          companyId: pharmacySchemes.companyId,
+          buyQty: pharmacySchemes.buyQty,
+          freeQty: pharmacySchemes.freeQty,
+          startDate: pharmacySchemes.startDate,
+          endDate: pharmacySchemes.endDate,
+          status: pharmacySchemes.status,
+          createdAt: pharmacySchemes.createdAt,
+        })
+        .from(pharmacySchemes)
+        .where(eq(pharmacySchemes.organizationId, organizationId))
+        .orderBy(desc(pharmacySchemes.createdAt));
+      return rows.map((r) => ({
+        ...r,
+        code: null as string | null,
+        tradeCustomerId: null as string | null,
+        priority: 0,
+      }));
+    }
   }
 
   async createScheme(
@@ -3150,30 +3194,69 @@ export class PharmacyErpService {
 
     // ── Full sales detail (main Dist sales report) ──────────────────────────
     if (reportId === "sales-report") {
-      const lines = await this.db
-        .select({
-          orderNumber: pharmacyDistOrders.orderNumber,
-          status: pharmacyDistOrders.status,
-          createdAt: pharmacyDistOrders.createdAt,
-          tradeCustomerId: pharmacyDistOrders.tradeCustomerId,
-          salesmanEmployeeId: pharmacyDistOrders.salesmanEmployeeId,
-          warehouseId: pharmacyDistOrders.warehouseId,
-          medicineId: pharmacyDistOrderLines.medicineId,
-          quantity: pharmacyDistOrderLines.quantity,
-          freeQuantity: pharmacyDistOrderLines.freeQuantity,
-          lineTotalPkr: pharmacyDistOrderLines.lineTotalPkr,
-          unitPricePkr: pharmacyDistOrderLines.unitPricePkr,
-        })
-        .from(pharmacyDistOrderLines)
-        .innerJoin(pharmacyDistOrders, eq(pharmacyDistOrderLines.orderId, pharmacyDistOrders.id))
-        .where(
-          and(
-            eq(pharmacyDistOrders.organizationId, organizationId),
-            ...(branch ? [eq(pharmacyDistOrders.branchId, branch.id)] : []),
-          ),
-        )
-        .orderBy(desc(pharmacyDistOrders.createdAt))
-        .limit(8000);
+      const orderConds = [
+        eq(pharmacyDistOrders.organizationId, organizationId),
+        ...(branch ? [eq(pharmacyDistOrders.branchId, branch.id)] : []),
+      ];
+      type SalesLineRow = {
+        orderNumber: string;
+        status: string;
+        createdAt: Date | null;
+        tradeCustomerId: string;
+        salesmanEmployeeId: string | null;
+        warehouseId: string | null;
+        medicineId: string;
+        quantity: number | null;
+        freeQuantity: number | null;
+        lineTotalPkr: number | null;
+        unitPricePkr: number | null;
+      };
+      let lines: SalesLineRow[];
+      try {
+        lines = await this.db
+          .select({
+            orderNumber: pharmacyDistOrders.orderNumber,
+            status: pharmacyDistOrders.status,
+            createdAt: pharmacyDistOrders.createdAt,
+            tradeCustomerId: pharmacyDistOrders.tradeCustomerId,
+            salesmanEmployeeId: pharmacyDistOrders.salesmanEmployeeId,
+            warehouseId: pharmacyDistOrders.warehouseId,
+            medicineId: pharmacyDistOrderLines.medicineId,
+            quantity: pharmacyDistOrderLines.quantity,
+            freeQuantity: pharmacyDistOrderLines.freeQuantity,
+            lineTotalPkr: pharmacyDistOrderLines.lineTotalPkr,
+            unitPricePkr: pharmacyDistOrderLines.unitPricePkr,
+          })
+          .from(pharmacyDistOrderLines)
+          .innerJoin(pharmacyDistOrders, eq(pharmacyDistOrderLines.orderId, pharmacyDistOrders.id))
+          .where(and(...orderConds))
+          .orderBy(desc(pharmacyDistOrders.createdAt))
+          .limit(8000);
+      } catch {
+        // Older DBs may lack warehouse_id / free_quantity / unit_price_pkr — degrade gracefully.
+        const bare = await this.db
+          .select({
+            orderNumber: pharmacyDistOrders.orderNumber,
+            status: pharmacyDistOrders.status,
+            createdAt: pharmacyDistOrders.createdAt,
+            tradeCustomerId: pharmacyDistOrders.tradeCustomerId,
+            salesmanEmployeeId: pharmacyDistOrders.salesmanEmployeeId,
+            medicineId: pharmacyDistOrderLines.medicineId,
+            quantity: pharmacyDistOrderLines.quantity,
+            lineTotalPkr: pharmacyDistOrderLines.lineTotalPkr,
+          })
+          .from(pharmacyDistOrderLines)
+          .innerJoin(pharmacyDistOrders, eq(pharmacyDistOrderLines.orderId, pharmacyDistOrders.id))
+          .where(and(...orderConds))
+          .orderBy(desc(pharmacyDistOrders.createdAt))
+          .limit(8000);
+        lines = bare.map((l) => ({
+          ...l,
+          warehouseId: null,
+          freeQuantity: 0,
+          unitPricePkr: 0,
+        }));
+      }
 
       const customers = await this.listTradeCustomers(organizationId);
       const areas = await this.listAreas(organizationId);
@@ -3216,8 +3299,14 @@ export class PharmacyErpService {
 
       const rows = lines
         .filter((l) => {
-          if (from && l.createdAt.toISOString().slice(0, 10) < from) return false;
-          if (to && l.createdAt.toISOString().slice(0, 10) > to) return false;
+          const day =
+            l.createdAt instanceof Date
+              ? l.createdAt.toISOString().slice(0, 10)
+              : l.createdAt
+                ? String(l.createdAt).slice(0, 10)
+                : "";
+          if (from && (!day || day < from)) return false;
+          if (to && (!day || day > to)) return false;
           if (["cancelled", "draft"].includes(l.status)) return false;
           if (hasSalesmanFilter) {
             if (!l.salesmanEmployeeId || !salesmanIdSet.has(l.salesmanEmployeeId)) return false;
@@ -3238,8 +3327,14 @@ export class PharmacyErpService {
           const cid = med?.companyId ?? null;
           const freeQty = l.freeQuantity ?? 0;
           const unit = l.unitPricePkr ?? 0;
+          const day =
+            l.createdAt instanceof Date
+              ? l.createdAt.toISOString().slice(0, 10)
+              : l.createdAt
+                ? String(l.createdAt).slice(0, 10)
+                : "";
           return {
-            date: l.createdAt.toISOString().slice(0, 10),
+            date: day,
             orderNumber: l.orderNumber,
             status: l.status,
             customerCode: cust?.code ?? "—",
@@ -3659,12 +3754,25 @@ export class PharmacyErpService {
     }
 
     if (reportId === "scheme-utilization") {
+      // Select only columns needed for the report (avoids schema-drift on optional cols).
       const schemes = await this.db
-        .select()
+        .select({
+          id: pharmacySchemes.id,
+          name: pharmacySchemes.name,
+          medicineId: pharmacySchemes.medicineId,
+          buyQty: pharmacySchemes.buyQty,
+          freeQty: pharmacySchemes.freeQty,
+          status: pharmacySchemes.status,
+          createdAt: pharmacySchemes.createdAt,
+        })
         .from(pharmacySchemes)
         .where(eq(pharmacySchemes.organizationId, organizationId))
         .orderBy(desc(pharmacySchemes.createdAt))
         .limit(200);
+      const lineConds = [eq(pharmacyDistOrders.organizationId, organizationId)];
+      if (branch) lineConds.push(eq(pharmacyDistOrders.branchId, branch.id));
+      if (from) lineConds.push(gte(pharmacyDistOrders.createdAt, new Date(`${from}T00:00:00.000Z`)));
+      if (to) lineConds.push(lte(pharmacyDistOrders.createdAt, new Date(`${to}T23:59:59.999Z`)));
       const lines = await this.db
         .select({
           medicineId: pharmacyDistOrderLines.medicineId,
@@ -3674,7 +3782,7 @@ export class PharmacyErpService {
         })
         .from(pharmacyDistOrderLines)
         .innerJoin(pharmacyDistOrders, eq(pharmacyDistOrderLines.orderId, pharmacyDistOrders.id))
-        .where(eq(pharmacyDistOrders.organizationId, organizationId))
+        .where(and(...lineConds))
         .limit(2000);
       const freeByMed = new Map<string, { qty: number; free: number; lines: number }>();
       for (const l of lines) {
