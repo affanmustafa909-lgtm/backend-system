@@ -1354,7 +1354,9 @@ export class PharmacyErpService {
       const unitPrice = resolved.unitPricePkr;
       const discount = Math.round(line.discountPkr ?? 0);
       const qty = Math.round(line.quantity);
-      const freeFromScheme = await this.pricing.resolveSchemeFreeQty(organizationId, line.medicineId, qty);
+      const freeFromScheme = await this.pricing.resolveSchemeFreeQty(organizationId, line.medicineId, qty, {
+        tradeCustomerId: customer.id,
+      });
       const freeQuantity = Math.round(line.freeQuantity ?? freeFromScheme);
       const lineTotal = qty * unitPrice - discount;
       subtotal += lineTotal;
@@ -2237,14 +2239,23 @@ export class PharmacyErpService {
       schemeType?: string;
       medicineId?: string;
       companyId?: string;
+      tradeCustomerId?: string;
       buyQty?: number;
       freeQty?: number;
       startDate?: string;
       endDate?: string;
+      priority?: number;
+      status?: string;
     },
   ) {
     if (!input.name?.trim()) throw new BadRequestException("name is required");
+    if (!input.companyId && !input.tradeCustomerId && !input.medicineId) {
+      // Allow global schemes from Pricing page; Bonus Attach always sends company or customer.
+    }
     const code = await this.nextSeqCode(organizationId, "SCH", pharmacySchemes, pharmacySchemes.code);
+    const hasCustomer = Boolean(input.tradeCustomerId);
+    const hasCompany = Boolean(input.companyId);
+    const defaultPriority = hasCustomer ? 0 : hasCompany ? 10 : 100;
     const [row] = await this.db
       .insert(pharmacySchemes)
       .values({
@@ -2254,10 +2265,13 @@ export class PharmacyErpService {
         schemeType: input.schemeType ?? "buy_x_get_y",
         medicineId: input.medicineId ?? null,
         companyId: input.companyId ?? null,
+        tradeCustomerId: input.tradeCustomerId ?? null,
         buyQty: Math.round(input.buyQty ?? 0),
         freeQty: Math.round(input.freeQty ?? 0),
         startDate: input.startDate ?? null,
         endDate: input.endDate ?? null,
+        priority: Math.round(input.priority ?? defaultPriority),
+        status: input.status?.trim() || "active",
       })
       .returning();
     if (!row) throw new BadRequestException("Failed to create scheme");
@@ -2280,8 +2294,13 @@ export class PharmacyErpService {
    * Buy X Get Y free qty from active schemes.
    * Priority ASC (lower = higher priority); max free as tie-break — see SalesPricingService.
    */
-  async resolveSchemeFreeQty(organizationId: string, medicineId: string, buyQty: number): Promise<number> {
-    return this.pricing.resolveSchemeFreeQty(organizationId, medicineId, buyQty);
+  async resolveSchemeFreeQty(
+    organizationId: string,
+    medicineId: string,
+    buyQty: number,
+    opts: { tradeCustomerId?: string | null } = {},
+  ): Promise<number> {
+    return this.pricing.resolveSchemeFreeQty(organizationId, medicineId, buyQty, opts);
   }
 
   async listWholesaleReturns(organizationId: string, branchCode: string) {
@@ -3138,10 +3157,12 @@ export class PharmacyErpService {
           createdAt: pharmacyDistOrders.createdAt,
           tradeCustomerId: pharmacyDistOrders.tradeCustomerId,
           salesmanEmployeeId: pharmacyDistOrders.salesmanEmployeeId,
+          warehouseId: pharmacyDistOrders.warehouseId,
           medicineId: pharmacyDistOrderLines.medicineId,
           quantity: pharmacyDistOrderLines.quantity,
           freeQuantity: pharmacyDistOrderLines.freeQuantity,
           lineTotalPkr: pharmacyDistOrderLines.lineTotalPkr,
+          unitPricePkr: pharmacyDistOrderLines.unitPricePkr,
         })
         .from(pharmacyDistOrderLines)
         .innerJoin(pharmacyDistOrders, eq(pharmacyDistOrderLines.orderId, pharmacyDistOrders.id))
@@ -3177,9 +3198,21 @@ export class PharmacyErpService {
         .from(popsEmployees)
         .where(eq(popsEmployees.organizationId, organizationId))
         .limit(500);
+      const warehouses = await this.db
+        .select({
+          id: pharmacyWarehouses.id,
+          name: pharmacyWarehouses.name,
+          code: pharmacyWarehouses.code,
+        })
+        .from(pharmacyWarehouses)
+        .where(eq(pharmacyWarehouses.organizationId, organizationId))
+        .limit(500);
       const medById = new Map(meds.map((m) => [m.id, m]));
       const coName = new Map(companies.map((c) => [c.id, c.name]));
       const empName = new Map(emps.map((e) => [e.id, e.name]));
+      const whName = new Map(
+        warehouses.map((w) => [w.id, w.name || w.code || w.id] as const),
+      );
 
       const rows = lines
         .filter((l) => {
@@ -3203,22 +3236,32 @@ export class PharmacyErpService {
           const med = medById.get(l.medicineId);
           const cust = custById.get(l.tradeCustomerId);
           const cid = med?.companyId ?? null;
+          const freeQty = l.freeQuantity ?? 0;
+          const unit = l.unitPricePkr ?? 0;
           return {
             date: l.createdAt.toISOString().slice(0, 10),
             orderNumber: l.orderNumber,
             status: l.status,
             customerCode: cust?.code ?? "—",
             customerName: cust?.name ?? "—",
+            tradeCustomerId: l.tradeCustomerId,
             salesman: l.salesmanEmployeeId
               ? empName.get(l.salesmanEmployeeId) ?? l.salesmanEmployeeId
               : "Unassigned",
             salesmanEmployeeId: l.salesmanEmployeeId,
+            warehouseId: l.warehouseId ?? null,
+            warehouse: l.warehouseId
+              ? whName.get(l.warehouseId) ?? l.warehouseId
+              : "Unassigned",
             company: cid ? coName.get(cid) ?? cid : "Unassigned",
             companyId: cid,
             sku: med?.sku ?? "—",
             product: med?.name ?? l.medicineId,
             qty: l.quantity ?? 0,
-            freeQty: l.freeQuantity ?? 0,
+            freeQty,
+            unitPricePkr: unit,
+            /** Bonus value at selling rate (free units × rate). */
+            bonusValuePkr: Math.round(freeQty * unit),
             salesPkr: l.lineTotalPkr ?? 0,
           };
         })
@@ -3232,11 +3275,13 @@ export class PharmacyErpService {
           "customerCode",
           "customerName",
           "salesman",
+          "warehouse",
           "company",
           "sku",
           "product",
           "qty",
           "freeQty",
+          "bonusValuePkr",
           "salesPkr",
           "status",
         ],

@@ -1541,6 +1541,10 @@ export const pharmacySchemes = pgTable("pharmacy_schemes", {
   schemeType: text("scheme_type").notNull().default("buy_x_get_y"),
   medicineId: uuid("medicine_id").references(() => pharmacyMedicines.id, { onDelete: "set null" }),
   companyId: uuid("company_id").references(() => pharmacyCompanies.id, { onDelete: "set null" }),
+  /** Optional trade-customer scope — Bonus Attach / customer-specific free qty. */
+  tradeCustomerId: uuid("trade_customer_id").references(() => pharmacyTradeCustomers.id, {
+    onDelete: "cascade",
+  }),
   buyQty: integer("buy_qty").notNull().default(0),
   freeQty: integer("free_qty").notNull().default(0),
   startDate: date("start_date"),

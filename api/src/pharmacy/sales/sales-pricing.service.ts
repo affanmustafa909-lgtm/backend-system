@@ -172,6 +172,7 @@ export class SalesPricingService {
     organizationId: string,
     medicineId: string,
     buyQty: number,
+    opts: { tradeCustomerId?: string | null } = {},
   ): Promise<ResolvedScheme> {
     const qty = Math.max(0, Math.round(buyQty));
     if (qty <= 0) {
@@ -188,28 +189,55 @@ export class SalesPricingService {
       .from(pharmacySchemes)
       .where(and(eq(pharmacySchemes.organizationId, organizationId), eq(pharmacySchemes.status, "active")));
 
-    type Candidate = { free: number; schemeId: string; label: string; priority: number };
+    type Candidate = {
+      free: number;
+      schemeId: string;
+      label: string;
+      priority: number;
+      /** Lower = more specific (customer > company > medicine > global). */
+      specificity: number;
+    };
     const matches: Candidate[] = [];
+    const tradeCustomerId = opts.tradeCustomerId || null;
     for (const s of schemes) {
       if (s.startDate && s.startDate > today) continue;
       if (s.endDate && s.endDate < today) continue;
       if (s.medicineId && s.medicineId !== medicineId) continue;
       if (s.companyId && med?.companyId && s.companyId !== med.companyId) continue;
       if (s.companyId && !med?.companyId) continue;
+      // Customer-scoped: only when the booking customer matches.
+      if (s.tradeCustomerId) {
+        if (!tradeCustomerId || s.tradeCustomerId !== tradeCustomerId) continue;
+      }
       if (!s.buyQty || s.buyQty <= 0 || !s.freeQty) continue;
-      const multiples = Math.floor(qty / s.buyQty);
-      if (multiples <= 0) continue;
+
+      const schemeType = String(s.schemeType ?? "buy_x_get_y");
+      let free = 0;
+      if (schemeType === "threshold_free" || schemeType === "flat_free") {
+        // Buy at least X → get Y free once (not per multiple).
+        free = qty >= s.buyQty ? s.freeQty : 0;
+      } else {
+        const multiples = Math.floor(qty / s.buyQty);
+        if (multiples <= 0) continue;
+        free = multiples * s.freeQty;
+      }
+      if (free <= 0) continue;
+
+      const specificity =
+        (s.tradeCustomerId ? 0 : 4) + (s.companyId ? 0 : 2) + (s.medicineId ? 0 : 1);
       matches.push({
-        free: multiples * s.freeQty,
+        free,
         schemeId: s.id,
         label: s.name,
         priority: s.priority ?? 0,
+        specificity,
       });
     }
     if (!matches.length) {
       return { freeQuantity: 0, schemeId: null, schemeLabel: null, priority: null };
     }
     matches.sort((a, b) => {
+      if (a.specificity !== b.specificity) return a.specificity - b.specificity;
       if (a.priority !== b.priority) return a.priority - b.priority;
       return b.free - a.free;
     });
@@ -222,8 +250,13 @@ export class SalesPricingService {
     };
   }
 
-  async resolveSchemeFreeQty(organizationId: string, medicineId: string, buyQty: number): Promise<number> {
-    const detail = await this.resolveSchemeDetail(organizationId, medicineId, buyQty);
+  async resolveSchemeFreeQty(
+    organizationId: string,
+    medicineId: string,
+    buyQty: number,
+    opts: { tradeCustomerId?: string | null } = {},
+  ): Promise<number> {
+    const detail = await this.resolveSchemeDetail(organizationId, medicineId, buyQty, opts);
     return detail.freeQuantity;
   }
 
@@ -272,7 +305,9 @@ export class SalesPricingService {
               qty,
             });
 
-      const scheme = await this.resolveSchemeDetail(organizationId, line.medicineId, qty);
+      const scheme = await this.resolveSchemeDetail(organizationId, line.medicineId, qty, {
+        tradeCustomerId: customer.id,
+      });
       const freeQuantity = Math.round(line.freeQuantity ?? scheme.freeQuantity);
       const discount = Math.round(line.discountPkr ?? 0);
       const lineTotal = qty * resolved.unitPricePkr - discount;

@@ -1084,10 +1084,13 @@ export class PharmacyErpController {
       schemeType?: string;
       medicineId?: string;
       companyId?: string;
+      tradeCustomerId?: string;
       buyQty?: number;
       freeQty?: number;
       startDate?: string;
       endDate?: string;
+      priority?: number;
+      status?: string;
     },
   ) {
     return this.erp.createScheme(user.organizationId, body);

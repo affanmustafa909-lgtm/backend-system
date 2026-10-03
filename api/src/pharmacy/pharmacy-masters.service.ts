@@ -1272,6 +1272,7 @@ export class PharmacyMastersService {
       schemeType?: string;
       medicineId?: string | null;
       companyId?: string | null;
+      tradeCustomerId?: string | null;
       buyQty?: number;
       freeQty?: number;
       startDate?: string | null;
@@ -1289,6 +1290,10 @@ export class PharmacyMastersService {
         schemeType: body.schemeType !== undefined ? body.schemeType.trim() : existing.schemeType,
         medicineId: body.medicineId !== undefined ? body.medicineId || null : existing.medicineId,
         companyId: body.companyId !== undefined ? body.companyId || null : existing.companyId,
+        tradeCustomerId:
+          body.tradeCustomerId !== undefined
+            ? body.tradeCustomerId || null
+            : existing.tradeCustomerId,
         buyQty: body.buyQty !== undefined ? Math.round(body.buyQty) : existing.buyQty,
         freeQty: body.freeQty !== undefined ? Math.round(body.freeQty) : existing.freeQty,
         startDate: body.startDate !== undefined ? body.startDate || null : existing.startDate,

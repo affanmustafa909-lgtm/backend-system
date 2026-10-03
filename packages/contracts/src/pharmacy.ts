@@ -705,6 +705,14 @@ export const pharmacyTradeCustomerSchema = z.object({
   status: z.string(),
 });
 
+/** Treat "" / whitespace as undefined so optional UUID fields don't fail Zod. */
+const optionalUuid = z.preprocess((value) => {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}, z.string().uuid().optional());
+
 export const createPharmacyTradeCustomerSchema = z.object({
   branchCode: z.string().optional(),
   code: z.string().min(1),
@@ -715,11 +723,11 @@ export const createPharmacyTradeCustomerSchema = z.object({
   whatsapp: z.string().optional(),
   email: z.string().optional(),
   address: z.string().optional(),
-  cityId: z.string().uuid().optional(),
-  areaId: z.string().uuid().optional(),
-  territoryId: z.string().uuid().optional(),
-  routeId: z.string().uuid().optional(),
-  salesmanEmployeeId: z.string().uuid().optional(),
+  cityId: optionalUuid,
+  areaId: optionalUuid,
+  territoryId: optionalUuid,
+  routeId: optionalUuid,
+  salesmanEmployeeId: optionalUuid,
   creditLimitPkr: z.number().min(0).optional(),
   creditDays: z.number().min(0).optional(),
   openingBalancePkr: z.number().min(0).optional(),
@@ -783,14 +791,6 @@ export const createPharmacyTradeCustomerSchema = z.object({
   advanceTaxSummary: z.boolean().optional(),
   invoiceWarranty: z.boolean().optional(),
 });
-
-/** Treat "" / whitespace as undefined so optional UUID fields don't fail Zod. */
-const optionalUuid = z.preprocess((value) => {
-  if (value === null || value === undefined) return undefined;
-  if (typeof value !== "string") return value;
-  const trimmed = value.trim();
-  return trimmed === "" ? undefined : trimmed;
-}, z.string().uuid().optional());
 
 export const createPharmacyPurchaseOrderSchema = z.object({
   branchCode: z.string().min(1),
