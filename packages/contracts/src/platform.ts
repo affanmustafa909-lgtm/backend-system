@@ -27,7 +27,7 @@ export const SYSTEM_TYPE_LABELS: Record<SystemType, string> = {
   general_store: "General Store POS",
   grocery: "Grocery POS",
   retail: "Retail POS",
-  education: "EducationFlow ERP",
+  education: "EducationFlow Management System",
 };
 
 /** Restaurant POS APIs also serve Ice Cream Bar tenants. */
