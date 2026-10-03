@@ -410,6 +410,11 @@ export const createEducationAdmissionSchema = z.object({
   notes: z.string().max(1000).optional(),
 });
 
+export const updateEducationAdmissionSchema = createEducationAdmissionSchema.partial().extend({
+  id: z.string().uuid(),
+});
+export type UpdateEducationAdmission = z.infer<typeof updateEducationAdmissionSchema>;
+
 export const educationDashboardSchema = z.object({
   totalStudents: z.number().int(),
   activeStudents: z.number().int(),
@@ -1264,6 +1269,8 @@ export const educationGeneratedDocumentSchema = z.object({
   payloadJson: z.string().nullable().optional(),
   status: z.string(),
   createdAt: z.string(),
+  bodyHtml: z.string().optional(),
+  documentTypeCode: z.string().optional(),
 });
 export type EducationGeneratedDocument = z.infer<typeof educationGeneratedDocumentSchema>;
 

@@ -61,6 +61,7 @@ import type {
 } from "@platform/contracts";
 import { and, asc, desc, eq, gte, isNull, lte, ne, sql } from "drizzle-orm";
 import {
+  educationAcademicSessions,
   educationAdmissions,
   educationAttendance,
   educationAuditLogs,
@@ -68,6 +69,7 @@ import {
   educationBatches,
   educationBookIssues,
   educationBooks,
+  educationClasses,
   educationCourses,
   educationDepartments,
   educationDocumentTemplates,
@@ -88,6 +90,7 @@ import {
   educationRooms,
   educationRouteStops,
   educationRoutes,
+  educationSections,
   educationStaff,
   educationStudentGuardians,
   educationStudents,
@@ -95,10 +98,16 @@ import {
   educationTimetableSlots,
   educationTransportAssignments,
   educationVehicles,
+  organizations,
   popsBranches,
   type PlatformPgDb,
 } from "@platform/database-pg";
 import { DRIZZLE } from "../drizzle/drizzle.tokens";
+import {
+  DEFAULT_EDUCATION_DOCUMENT_TEMPLATES,
+  mergeEducationTemplate,
+  parsePayloadJson,
+} from "./education-document-engine";
 
 type ExpenseStatus = "draft" | "pending" | "approved" | "paid" | "cancelled" | "rejected";
 
@@ -3085,6 +3094,133 @@ export class EducationOpsService {
     };
   }
 
+  async seedDocumentTemplates(organizationId: string, branchCode?: string) {
+    const branch = branchCode ? await this.resolveBranch(organizationId, branchCode) : null;
+    let created = 0;
+    for (const tpl of DEFAULT_EDUCATION_DOCUMENT_TEMPLATES) {
+      const conditions = [
+        eq(educationDocumentTemplates.organizationId, organizationId),
+        eq(educationDocumentTemplates.documentTypeCode, tpl.documentTypeCode),
+      ];
+      if (branch) conditions.push(eq(educationDocumentTemplates.branchId, branch.id));
+      const [existing] = await this.db
+        .select()
+        .from(educationDocumentTemplates)
+        .where(and(...conditions))
+        .limit(1);
+      if (existing) continue;
+      await this.db.insert(educationDocumentTemplates).values({
+        organizationId,
+        branchId: branch?.id ?? null,
+        name: tpl.name,
+        documentTypeCode: tpl.documentTypeCode,
+        bodyHtml: tpl.bodyHtml,
+        status: "active",
+      });
+      created += 1;
+    }
+    return { created, total: DEFAULT_EDUCATION_DOCUMENT_TEMPLATES.length };
+  }
+
+  private async buildDocumentTokens(
+    organizationId: string,
+    input: {
+      branchId?: string | null;
+      studentId?: string | null;
+      payloadJson?: string | null;
+    },
+  ): Promise<Record<string, string | number | null | undefined>> {
+    const tokens: Record<string, string | number | null | undefined> = {
+      ...parsePayloadJson(input.payloadJson),
+      generatedAt: new Date().toLocaleString("en-PK", { dateStyle: "medium", timeStyle: "short" }),
+      issueDate: new Date().toISOString().slice(0, 10),
+      documentNumber: `DOC-${Date.now().toString(36).toUpperCase()}`,
+    };
+
+    const [org] = await this.db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+      .limit(1);
+    tokens.institutionName = tokens.institutionName || org?.name || "EducationFlow Institution";
+    tokens.institutionAddress = tokens.institutionAddress || "";
+    tokens.institutionPhone = tokens.institutionPhone || "";
+    tokens.institutionEmail = tokens.institutionEmail || "";
+
+    if (input.branchId) {
+      const [branch] = await this.db
+        .select()
+        .from(popsBranches)
+        .where(eq(popsBranches.id, input.branchId))
+        .limit(1);
+      tokens.branchName = tokens.branchName || branch?.name || branch?.code || "";
+    } else {
+      tokens.branchName = tokens.branchName || "Main";
+    }
+
+    if (input.studentId) {
+      const [student] = await this.db
+        .select()
+        .from(educationStudents)
+        .where(
+          and(
+            eq(educationStudents.id, input.studentId),
+            eq(educationStudents.organizationId, organizationId),
+          ),
+        )
+        .limit(1);
+      if (student) {
+        tokens.studentName =
+          tokens.studentName ||
+          [student.firstName, student.lastName].filter(Boolean).join(" ").trim();
+        tokens.studentNumber = tokens.studentNumber || student.studentNumber;
+        tokens.fatherName = tokens.fatherName || student.fatherName || "";
+        tokens.motherName = tokens.motherName || student.motherName || "";
+        tokens.phone = tokens.phone || student.phone || "";
+        tokens.email = tokens.email || student.email || "";
+        tokens.address = tokens.address || student.address || "";
+        if (student.classId) {
+          const [klass] = await this.db
+            .select()
+            .from(educationClasses)
+            .where(eq(educationClasses.id, student.classId))
+            .limit(1);
+          tokens.className = tokens.className || klass?.name || "";
+        }
+        if (student.sectionId) {
+          const [section] = await this.db
+            .select()
+            .from(educationSections)
+            .where(eq(educationSections.id, student.sectionId))
+            .limit(1);
+          tokens.sectionName = tokens.sectionName || section?.name || "";
+        }
+        if (student.sessionId) {
+          const [session] = await this.db
+            .select()
+            .from(educationAcademicSessions)
+            .where(eq(educationAcademicSessions.id, student.sessionId))
+            .limit(1);
+          tokens.sessionName = tokens.sessionName || session?.name || "";
+        }
+      }
+    }
+
+    tokens.className = tokens.className || "—";
+    tokens.sectionName = tokens.sectionName || "—";
+    tokens.sessionName = tokens.sessionName || "—";
+    tokens.studentName = tokens.studentName || "—";
+    tokens.studentNumber = tokens.studentNumber || "—";
+    tokens.fatherName = tokens.fatherName || "—";
+    tokens.purpose = tokens.purpose || "official use";
+    tokens.reason = tokens.reason || "as requested";
+    tokens.effectiveDate = tokens.effectiveDate || tokens.issueDate;
+    tokens.marksTableHtml =
+      tokens.marksTableHtml ||
+      `<table class="table"><thead><tr><th>Subject</th><th>Obtained</th><th>Total</th><th>Grade</th></tr></thead><tbody><tr><td colspan="4">No marks provided</td></tr></tbody></table>`;
+    return tokens;
+  }
+
   async generateDocument(organizationId: string, input: CreateEducationGeneratedDocument, userId?: string) {
     const branch = await this.resolveOptionalBranch(organizationId, input.branchCode);
     const [template] = await this.db
@@ -3098,6 +3234,19 @@ export class EducationOpsService {
       )
       .limit(1);
     if (!template) throw new NotFoundException("Document template not found");
+
+    const tokens = await this.buildDocumentTokens(organizationId, {
+      branchId: branch?.id ?? template.branchId,
+      studentId: input.studentId,
+      payloadJson: input.payloadJson,
+    });
+    const mergedHtml = mergeEducationTemplate(template.bodyHtml, tokens);
+    const storedPayload = JSON.stringify({
+      ...tokens,
+      mergedHtml,
+      documentTypeCode: template.documentTypeCode,
+    });
+
     const [row] = await this.db
       .insert(educationGeneratedDocuments)
       .values({
@@ -3108,7 +3257,7 @@ export class EducationOpsService {
         personType: input.personType ?? null,
         personId: input.personId ?? null,
         title: input.title,
-        payloadJson: input.payloadJson ?? null,
+        payloadJson: storedPayload,
         status: input.status ?? "generated",
       })
       .returning();
@@ -3132,7 +3281,8 @@ export class EducationOpsService {
       payloadJson: row!.payloadJson,
       status: row!.status,
       createdAt: this.iso(row!.createdAt)!,
-      bodyHtml: template.bodyHtml,
+      bodyHtml: mergedHtml,
+      documentTypeCode: template.documentTypeCode,
     };
   }
 
@@ -3145,19 +3295,72 @@ export class EducationOpsService {
       .from(educationGeneratedDocuments)
       .where(and(...conditions))
       .orderBy(desc(educationGeneratedDocuments.createdAt));
-    return rows.map((r) => ({
-      id: r.id,
-      organizationId: r.organizationId,
-      branchId: r.branchId,
-      templateId: r.templateId,
-      studentId: r.studentId,
-      personType: r.personType,
-      personId: r.personId,
-      title: r.title,
-      payloadJson: r.payloadJson,
-      status: r.status,
-      createdAt: this.iso(r.createdAt)!,
-    }));
+    return rows.map((r) => {
+      const payload = parsePayloadJson(r.payloadJson);
+      return {
+        id: r.id,
+        organizationId: r.organizationId,
+        branchId: r.branchId,
+        templateId: r.templateId,
+        studentId: r.studentId,
+        personType: r.personType,
+        personId: r.personId,
+        title: r.title,
+        payloadJson: r.payloadJson,
+        status: r.status,
+        createdAt: this.iso(r.createdAt)!,
+        bodyHtml: typeof payload.mergedHtml === "string" ? payload.mergedHtml : undefined,
+        documentTypeCode:
+          typeof payload.documentTypeCode === "string" ? payload.documentTypeCode : undefined,
+      };
+    });
+  }
+
+  async getGeneratedDocument(organizationId: string, id: string) {
+    const [row] = await this.db
+      .select()
+      .from(educationGeneratedDocuments)
+      .where(
+        and(
+          eq(educationGeneratedDocuments.id, id),
+          eq(educationGeneratedDocuments.organizationId, organizationId),
+        ),
+      )
+      .limit(1);
+    if (!row) throw new NotFoundException("Generated document not found");
+    const payload = parsePayloadJson(row.payloadJson);
+    let bodyHtml = typeof payload.mergedHtml === "string" ? payload.mergedHtml : "";
+    if (!bodyHtml) {
+      const [template] = await this.db
+        .select()
+        .from(educationDocumentTemplates)
+        .where(eq(educationDocumentTemplates.id, row.templateId))
+        .limit(1);
+      if (template) {
+        const tokens = await this.buildDocumentTokens(organizationId, {
+          branchId: row.branchId,
+          studentId: row.studentId,
+          payloadJson: row.payloadJson,
+        });
+        bodyHtml = mergeEducationTemplate(template.bodyHtml, tokens);
+      }
+    }
+    return {
+      id: row.id,
+      organizationId: row.organizationId,
+      branchId: row.branchId,
+      templateId: row.templateId,
+      studentId: row.studentId,
+      personType: row.personType,
+      personId: row.personId,
+      title: row.title,
+      payloadJson: row.payloadJson,
+      status: row.status,
+      createdAt: this.iso(row.createdAt)!,
+      bodyHtml,
+      documentTypeCode:
+        typeof payload.documentTypeCode === "string" ? payload.documentTypeCode : undefined,
+    };
   }
 
   // ─── Reports ─────────────────────────────────────────────────────────────
@@ -3271,6 +3474,112 @@ export class EducationOpsService {
         totalPkr: Number(r.total),
         count: Number(r.count),
       })),
+    };
+  }
+
+  async reportStudents(organizationId: string, branchCode: string) {
+    const branch = await this.resolveBranch(organizationId, branchCode);
+    const byStatus = await this.db
+      .select({
+        statusCode: educationStudents.statusCode,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(educationStudents)
+      .where(
+        and(
+          eq(educationStudents.organizationId, organizationId),
+          eq(educationStudents.branchId, branch.id),
+          isNull(educationStudents.deletedAt),
+        ),
+      )
+      .groupBy(educationStudents.statusCode);
+    const [totalRow] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(educationStudents)
+      .where(
+        and(
+          eq(educationStudents.organizationId, organizationId),
+          eq(educationStudents.branchId, branch.id),
+          isNull(educationStudents.deletedAt),
+        ),
+      );
+    return {
+      report: "students",
+      total: Number(totalRow?.count ?? 0),
+      byStatus: byStatus.map((r) => ({ statusCode: r.statusCode, count: Number(r.count) })),
+    };
+  }
+
+  async reportExams(organizationId: string, branchCode: string) {
+    const branch = await this.resolveBranch(organizationId, branchCode);
+    const byStatus = await this.db
+      .select({
+        status: educationExams.status,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(educationExams)
+      .where(and(eq(educationExams.organizationId, organizationId), eq(educationExams.branchId, branch.id)))
+      .groupBy(educationExams.status);
+    const [marksRow] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(educationMarks)
+      .where(and(eq(educationMarks.organizationId, organizationId), eq(educationMarks.branchId, branch.id)));
+    return {
+      report: "exams",
+      byStatus: byStatus.map((r) => ({ status: r.status, count: Number(r.count) })),
+      marksCount: Number(marksRow?.count ?? 0),
+    };
+  }
+
+  async reportFinance(organizationId: string, branchCode: string) {
+    const branch = await this.resolveBranch(organizationId, branchCode);
+    const fees = await this.reportFeeCollection(organizationId, branchCode);
+    const expenses = await this.reportExpenseSummary(organizationId, branchCode);
+    const [txnRow] = await this.db
+      .select({
+        count: sql<number>`count(*)::int`,
+        total: sql<number>`coalesce(sum(${educationFinanceTxns.amountPkr}), 0)::int`,
+      })
+      .from(educationFinanceTxns)
+      .where(
+        and(
+          eq(educationFinanceTxns.organizationId, organizationId),
+          eq(educationFinanceTxns.branchId, branch.id),
+        ),
+      );
+    return {
+      report: "finance",
+      fees,
+      expenses,
+      transactions: { count: Number(txnRow?.count ?? 0), totalPkr: Number(txnRow?.total ?? 0) },
+    };
+  }
+
+  async reportPayroll(organizationId: string, branchCode: string) {
+    const branch = await this.resolveBranch(organizationId, branchCode);
+    const runs = await this.db
+      .select({
+        status: educationPayrollRuns.status,
+        count: sql<number>`count(*)::int`,
+        total: sql<number>`coalesce(sum(${educationPayrollRuns.totalPkr}), 0)::int`,
+      })
+      .from(educationPayrollRuns)
+      .where(
+        and(eq(educationPayrollRuns.organizationId, organizationId), eq(educationPayrollRuns.branchId, branch.id)),
+      )
+      .groupBy(educationPayrollRuns.status);
+    const [slips] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(educationPayslips)
+      .where(eq(educationPayslips.organizationId, organizationId));
+    return {
+      report: "payroll",
+      byStatus: runs.map((r) => ({
+        status: r.status,
+        count: Number(r.count),
+        totalPkr: Number(r.total),
+      })),
+      payslipCount: Number(slips?.count ?? 0),
     };
   }
 

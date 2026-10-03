@@ -3,6 +3,7 @@ import {
   bulkCreateEducationAttendanceSchema,
   createEducationAcademicSessionSchema,
   createEducationAdmissionSchema,
+  updateEducationAdmissionSchema,
   createEducationAttendanceSchema,
   createEducationBatchSchema,
   createEducationBatchStudentSchema,
@@ -149,8 +150,10 @@ export class EducationController {
 
   @Post("bootstrap-defaults")
   @RequirePermissions("pops.inventory.manage")
-  bootstrapDefaults(@CurrentUser() user: AccessJwtPayload, @Body() body: { branchCode?: string }) {
-    return this.education.bootstrapDefaults(user.organizationId, body?.branchCode?.trim());
+  async bootstrapDefaults(@CurrentUser() user: AccessJwtPayload, @Body() body: { branchCode?: string }) {
+    const result = await this.education.bootstrapDefaults(user.organizationId, body?.branchCode?.trim());
+    const templates = await this.ops.seedDocumentTemplates(user.organizationId, body?.branchCode?.trim());
+    return { ...result, documentTemplates: templates };
   }
 
   @Get("lookups")
@@ -285,6 +288,21 @@ export class EducationController {
   @RequirePermissions("pops.inventory.manage")
   createAdmission(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
     return this.education.createAdmission(user.organizationId, createEducationAdmissionSchema.parse(body));
+  }
+
+  @Patch("admissions/:id")
+  @RequirePermissions("pops.inventory.manage")
+  updateAdmission(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string, @Body() body: unknown) {
+    return this.education.updateAdmission(
+      user.organizationId,
+      updateEducationAdmissionSchema.parse({ ...(body as object), id }),
+    );
+  }
+
+  @Post("admissions/:id/convert")
+  @RequirePermissions("pops.inventory.manage")
+  convertAdmission(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string) {
+    return this.education.convertAdmissionToStudent(user.organizationId, id);
   }
 
   @Get("fee-structures")
@@ -1169,11 +1187,39 @@ export class EducationController {
     return this.ops.listGeneratedDocuments(user.organizationId, branchCode?.trim());
   }
 
+  @Get("generated-documents/:id")
+  @RequirePermissions("pops.read")
+  getGeneratedDocument(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string) {
+    return this.ops.getGeneratedDocument(user.organizationId, id);
+  }
+
+  @Post("document-templates/seed")
+  @RequirePermissions("pops.inventory.manage")
+  seedDocumentTemplates(@CurrentUser() user: AccessJwtPayload, @Body() body: { branchCode?: string }) {
+    return this.ops.seedDocumentTemplates(user.organizationId, body?.branchCode?.trim());
+  }
+
   // ─── Reports ───────────────────────────────────────────────────────────
 
   @Get("reports/attendance-summary")
   @RequirePermissions("pops.read")
   reportAttendanceSummary(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode: string,
+    @Query("fromDate") fromDate?: string,
+    @Query("toDate") toDate?: string,
+  ) {
+    return this.ops.reportAttendanceSummary(
+      user.organizationId,
+      branchCode?.trim() ?? "",
+      fromDate?.trim(),
+      toDate?.trim(),
+    );
+  }
+
+  @Get("reports/attendance")
+  @RequirePermissions("pops.read")
+  reportAttendanceAlias(
     @CurrentUser() user: AccessJwtPayload,
     @Query("branchCode") branchCode: string,
     @Query("fromDate") fromDate?: string,
@@ -1203,6 +1249,22 @@ export class EducationController {
     );
   }
 
+  @Get("reports/fees")
+  @RequirePermissions("pops.read")
+  reportFeesAlias(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode: string,
+    @Query("fromDate") fromDate?: string,
+    @Query("toDate") toDate?: string,
+  ) {
+    return this.ops.reportFeeCollection(
+      user.organizationId,
+      branchCode?.trim() ?? "",
+      fromDate?.trim(),
+      toDate?.trim(),
+    );
+  }
+
   @Get("reports/admissions-count")
   @RequirePermissions("pops.read")
   reportAdmissionsCount(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
@@ -1213,6 +1275,30 @@ export class EducationController {
   @RequirePermissions("pops.read")
   reportExpenseSummary(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
     return this.ops.reportExpenseSummary(user.organizationId, branchCode?.trim() ?? "");
+  }
+
+  @Get("reports/students")
+  @RequirePermissions("pops.read")
+  reportStudents(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
+    return this.ops.reportStudents(user.organizationId, branchCode?.trim() ?? "");
+  }
+
+  @Get("reports/exams")
+  @RequirePermissions("pops.read")
+  reportExams(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
+    return this.ops.reportExams(user.organizationId, branchCode?.trim() ?? "");
+  }
+
+  @Get("reports/finance")
+  @RequirePermissions("pops.read")
+  reportFinance(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
+    return this.ops.reportFinance(user.organizationId, branchCode?.trim() ?? "");
+  }
+
+  @Get("reports/payroll")
+  @RequirePermissions("pops.read")
+  reportPayroll(@CurrentUser() user: AccessJwtPayload, @Query("branchCode") branchCode: string) {
+    return this.ops.reportPayroll(user.organizationId, branchCode?.trim() ?? "");
   }
 
   // ─── Audit logs ────────────────────────────────────────────────────────

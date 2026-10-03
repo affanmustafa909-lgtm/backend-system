@@ -7,6 +7,7 @@ import {
 import type {
   CreateEducationAcademicSession,
   CreateEducationAdmission,
+  UpdateEducationAdmission,
   CreateEducationClass,
   CreateEducationFeeInvoice,
   CreateEducationFeePayment,
@@ -1055,6 +1056,79 @@ export class EducationService {
       })
       .returning();
     return this.mapAdmission(row!);
+  }
+
+  async updateAdmission(organizationId: string, input: UpdateEducationAdmission) {
+    const [existing] = await this.db
+      .select()
+      .from(educationAdmissions)
+      .where(
+        and(eq(educationAdmissions.id, input.id), eq(educationAdmissions.organizationId, organizationId)),
+      )
+      .limit(1);
+    if (!existing) throw new NotFoundException("Admission not found");
+    const branch =
+      input.branchCode !== undefined ? await this.resolveBranch(organizationId, input.branchCode) : undefined;
+    const [row] = await this.db
+      .update(educationAdmissions)
+      .set({
+        ...(branch ? { branchId: branch.id } : {}),
+        ...(input.applicantName !== undefined ? { applicantName: input.applicantName } : {}),
+        ...(input.fatherName !== undefined ? { fatherName: input.fatherName } : {}),
+        ...(input.phone !== undefined ? { phone: input.phone } : {}),
+        ...(input.email !== undefined ? { email: input.email || null } : {}),
+        ...(input.admissionTypeCode !== undefined ? { admissionTypeCode: input.admissionTypeCode } : {}),
+        ...(input.statusCode !== undefined ? { statusCode: input.statusCode } : {}),
+        ...(input.classId !== undefined ? { classId: input.classId } : {}),
+        ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
+        ...(input.notes !== undefined ? { notes: input.notes } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(educationAdmissions.id, input.id))
+      .returning();
+    return this.mapAdmission(row!);
+  }
+
+  async convertAdmissionToStudent(organizationId: string, admissionId: string) {
+    const [admission] = await this.db
+      .select()
+      .from(educationAdmissions)
+      .where(
+        and(eq(educationAdmissions.id, admissionId), eq(educationAdmissions.organizationId, organizationId)),
+      )
+      .limit(1);
+    if (!admission) throw new NotFoundException("Admission not found");
+    if (admission.statusCode === "enrolled") {
+      throw new BadRequestException("Admission already converted to student");
+    }
+    const nameParts = admission.applicantName.trim().split(/\s+/);
+    const firstName = nameParts[0] || admission.applicantName;
+    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : null;
+    const [branch] = await this.db
+      .select()
+      .from(popsBranches)
+      .where(eq(popsBranches.id, admission.branchId))
+      .limit(1);
+    if (!branch) throw new NotFoundException("Branch not found for admission");
+    const student = await this.createStudent(organizationId, {
+      branchCode: branch.code,
+      firstName,
+      lastName: lastName ?? undefined,
+      fatherName: admission.fatherName ?? undefined,
+      phone: admission.phone ?? undefined,
+      email: admission.email ?? undefined,
+      classId: admission.classId ?? undefined,
+      sessionId: admission.sessionId ?? undefined,
+      admissionNumber: admission.applicationNumber,
+      admissionDate: new Date().toISOString().slice(0, 10),
+      statusCode: "active",
+    });
+    const [updated] = await this.db
+      .update(educationAdmissions)
+      .set({ statusCode: "enrolled", updatedAt: new Date() })
+      .where(eq(educationAdmissions.id, admissionId))
+      .returning();
+    return { admission: this.mapAdmission(updated!), student };
   }
 
   async listFeeStructures(organizationId: string, branchCode: string) {

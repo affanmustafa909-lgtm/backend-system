@@ -4,10 +4,18 @@
  *
  * Uses `pg` from packages/database-pg (always present in the Docker image).
  */
+import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveWorkspaceRoot } from "./resolve-workspace.mjs";
+
+/** EducationFlow DDL files — Railway boot previously skipped these when `users` already existed. */
+const EDUCATION_SCHEMA_FILES = [
+  "education-schema.sql",
+  "education-schema-extended.sql",
+  "education-schema-missing.sql",
+];
 
 const STATEMENTS = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_set_password text`,
@@ -1627,6 +1635,20 @@ const STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS sync_devices_org_device_uidx ON sync_devices (organization_id, device_id)`,
   `CREATE INDEX IF NOT EXISTS sync_devices_org_user_idx ON sync_devices (organization_id, user_id)`,
 ];
+function loadEducationSchemaSql(appRoot) {
+  const scriptsDir = join(appRoot, "scripts");
+  const chunks = [];
+  for (const file of EDUCATION_SCHEMA_FILES) {
+    const path = join(scriptsDir, file);
+    if (!existsSync(path)) {
+      console.warn(`[ensure-schema] education SQL missing: ${path}`);
+      continue;
+    }
+    chunks.push(`-- ${file}\n${readFileSync(path, "utf8")}`);
+  }
+  return chunks;
+}
+
 export function ensureCriticalSchema() {
   const databaseUrl = process.env.DATABASE_URL?.trim();
   if (!databaseUrl) {
@@ -1638,10 +1660,12 @@ export function ensureCriticalSchema() {
   const apiRoot = join(scriptDir, "..");
   const appRoot = resolveWorkspaceRoot(apiRoot);
   const dbPkgRoot = join(appRoot, "packages", "database-pg");
+  const educationSqlChunks = loadEducationSchemaSql(appRoot);
 
   const runner = `
 const { Client } = require("pg");
 const statements = ${JSON.stringify(STATEMENTS)};
+const educationChunks = ${JSON.stringify(educationSqlChunks)};
 function stripSsl(raw) {
   try {
     const url = new URL(raw);
@@ -1668,6 +1692,14 @@ function stripSsl(raw) {
       console.log("[ensure-schema] OK:", sql.slice(0, 80));
     } catch (err) {
       console.warn("[ensure-schema] skip:", err && err.message ? err.message : err);
+    }
+  }
+  for (const chunk of educationChunks) {
+    try {
+      await client.query(chunk);
+      console.log("[ensure-schema] OK: education schema chunk", chunk.slice(0, 40).replace(/\\n/g, " "));
+    } catch (err) {
+      console.warn("[ensure-schema] education skip:", err && err.message ? err.message : err);
     }
   }
   await client.end();
