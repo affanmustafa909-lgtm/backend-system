@@ -316,7 +316,7 @@ async function main() {
     return `list=${pl.json.code || priceListId.slice(0, 8)} scheme=${schemeId.slice(0, 8)} price=${resolved.json.unitPricePkr}`;
   });
 
-  await step("08. purchase order + approve", async () => {
+  await step("08. purchase order + approve + GRN stock", async () => {
     const po = await req("POST", "/v1/pharmacy/purchase-orders", {
       token,
       body: {
@@ -324,8 +324,8 @@ async function main() {
         supplierId: supplierId || undefined,
         notes: `Lamos PO ${stamp}`,
         lines: [
-          { medicineId, quantity: 20, unitCostPkr: 75000 },
-          { medicineId: medicineId2, quantity: 50, unitCostPkr: 40 },
+          { medicineId, quantity: 200, unitCostPkr: 75000 },
+          { medicineId: medicineId2, quantity: 500, unitCostPkr: 40 },
         ],
       },
     });
@@ -333,7 +333,39 @@ async function main() {
     poId = po.json.id;
     const ap = await req("POST", `/v1/pharmacy/purchase-orders/${poId}/approve`, { token, body: {} });
     assertOk(ap.res, ap.json, "approve PO");
-    return po.json.orderNumber || poId.slice(0, 8);
+    const expiry = new Date();
+    expiry.setFullYear(expiry.getFullYear() + 2);
+    const expiryDate = expiry.toISOString().slice(0, 10);
+    const grn = await req("POST", "/v1/pharmacy/grns", {
+      token,
+      body: {
+        branchCode: BRANCH,
+        warehouseId,
+        purchaseOrderId: poId,
+        supplierId: supplierId || undefined,
+        receivedDate: today,
+        skipPoStatusCheck: true,
+        idempotencyKey: `grn-life-${stamp}`,
+        lines: [
+          {
+            medicineId,
+            batchNumber: `B1-${stamp}`,
+            expiryDate,
+            quantity: 200,
+            unitCostPkr: 75000,
+          },
+          {
+            medicineId: medicineId2,
+            batchNumber: `B2-${stamp}`,
+            expiryDate,
+            quantity: 500,
+            unitCostPkr: 40,
+          },
+        ],
+      },
+    });
+    assertOk(grn.res, grn.json, "GRN receive stock");
+    return `${po.json.orderNumber || po.json.poNumber || poId.slice(0, 8)}+GRN`;
   });
 
   await step("09. book dist order (multi-line)", async () => {
@@ -560,6 +592,7 @@ async function main() {
 
   await step("18. live reports (all)", async () => {
     const ids = [
+      "sales-report",
       "daily-sales",
       "city-sales",
       "area-sales",
@@ -567,6 +600,8 @@ async function main() {
       "scheme-utilization",
       "salesman-sales",
       "sku-sales",
+      "customer-sales",
+      "customer-credit",
       "outstanding-aging",
       "collections-summary",
       "customer-ledger",

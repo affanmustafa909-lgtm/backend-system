@@ -212,6 +212,34 @@ async function main() {
     return `company=${schemeId.slice(0, 8)} customer=${customerSchemeId.slice(0, 8)}`;
   });
 
+  await step("04b. GRN receive stock into warehouse", async () => {
+    const expiry = new Date();
+    expiry.setFullYear(expiry.getFullYear() + 2);
+    const expiryDate = expiry.toISOString().slice(0, 10);
+    const grn = await req("POST", "/v1/pharmacy/grns", {
+      token,
+      body: {
+        branchCode: BRANCH,
+        warehouseId,
+        receivedDate: today,
+        skipPoStatusCheck: true,
+        idempotencyKey: `grn-bonus-${stamp}`,
+        notes: `Bonus e2e stock ${stamp}`,
+        lines: [
+          {
+            medicineId,
+            batchNumber: `BONB-${stamp}`,
+            expiryDate,
+            quantity: 1000,
+            unitCostPkr: 50,
+          },
+        ],
+      },
+    });
+    assertOk(grn.res, grn.json, "GRN");
+    return grn.json.grnNumber || grn.json.id?.slice(0, 8);
+  });
+
   await step("05. resolve price with bonus free qty", async () => {
     const resolved = await req("GET", "/v1/pharmacy/pricing/resolve", {
       token,
