@@ -1692,20 +1692,47 @@ function stripSsl(raw) {
     ssl: local ? false : { rejectUnauthorized: false },
   });
   await client.connect();
+  // Never wait forever on locks held by the still-running previous Railway replica.
+  try {
+    await client.query("SET lock_timeout = '5s'");
+    await client.query("SET statement_timeout = '60s'");
+  } catch (err) {
+    console.warn("[ensure-schema] could not set timeouts:", err && err.message ? err.message : err);
+  }
+  let ok = 0;
+  let skipped = 0;
   for (const sql of statements) {
     try {
       await client.query(sql);
-      console.log("[ensure-schema] OK:", sql.slice(0, 80));
+      ok += 1;
     } catch (err) {
-      console.warn("[ensure-schema] skip:", err && err.message ? err.message : err);
+      skipped += 1;
+      const msg = err && err.message ? err.message : String(err);
+      if (!/lock_timeout|canceling statement/i.test(msg)) {
+        console.warn("[ensure-schema] skip:", msg);
+      }
     }
   }
-  for (const chunk of educationChunks) {
-    try {
-      await client.query(chunk);
-      console.log("[ensure-schema] OK: education schema chunk", chunk.slice(0, 40).replace(/\\n/g, " "));
-    } catch (err) {
-      console.warn("[ensure-schema] education skip:", err && err.message ? err.message : err);
+  console.log("[ensure-schema] statements ok=" + ok + " skipped=" + skipped);
+
+  // Skip education DDL when core table already exists (idempotent but slow on every boot).
+  let educationPresent = false;
+  try {
+    const reg = await client.query("select to_regclass('public.education_students') as present");
+    educationPresent = Boolean(reg.rows[0] && reg.rows[0].present);
+  } catch {
+    educationPresent = false;
+  }
+  if (educationPresent) {
+    console.log("[ensure-schema] education_students present — skip education SQL chunks");
+  } else {
+    for (const chunk of educationChunks) {
+      try {
+        await client.query(chunk);
+        console.log("[ensure-schema] OK: education schema chunk", chunk.slice(0, 40).replace(/\\n/g, " "));
+      } catch (err) {
+        console.warn("[ensure-schema] education skip:", err && err.message ? err.message : err);
+      }
     }
   }
   await client.end();
