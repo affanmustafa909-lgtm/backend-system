@@ -67,12 +67,31 @@ async function bootstrap(): Promise<void> {
    */
   const expressApp = express();
   let nestReady = false;
+  let nestError: string | null = null;
+  // Distinct from the old public-proxy deploy (`nest:false` forever, no `boot` field).
+  const BOOT_MARK = "early-express-v2";
+
   expressApp.get("/health", (_req, res) => {
     res.status(200).json({
       status: "ok",
       nest: nestReady,
-      boot: "early-express",
+      boot: BOOT_MARK,
+      error: nestError,
       ts: new Date().toISOString(),
+    });
+  });
+
+  // While Nest is still loading, answer other routes with a clear 503 (same Express
+  // process — never the old internal :3999 proxy that masked Nest crashes).
+  expressApp.use((req, res, next) => {
+    if (nestReady) return next();
+    const path = req.path || "";
+    if (path === "/health" || path.startsWith("/health/")) return next();
+    res.status(503).json({
+      status: "starting",
+      nest: false,
+      boot: BOOT_MARK,
+      error: nestError,
     });
   });
 
@@ -80,37 +99,49 @@ async function bootstrap(): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     httpServer.once("error", reject);
     httpServer.listen(port, host, () => {
-      console.log(`[api] Early /health listening on http://${host}:${port}`);
+      console.log(`[api] Early /health listening on http://${host}:${port} (${BOOT_MARK})`);
       resolve();
     });
   });
 
-  const app = await NestFactory.create<NestExpressApplication>(
-    AppModule,
-    new ExpressAdapter(expressApp),
-    { bufferLogs: true },
-  );
-  app.useGlobalFilters(new ZodExceptionFilter());
-  app.use(compressionMiddleware());
-  app.use(createRequestConcurrencyMiddleware());
-  app.enableCors({
-    origin: parseCorsOrigins(),
-    credentials: true,
-  });
-  app.useStaticAssets(join(process.cwd(), "data", "uploads"), { prefix: "/uploads/" });
-  await app.init();
-  nestReady = true;
-  console.log(`[api] Nest ready on http://${host}:${port}`);
+  try {
+    console.log("[api] NestFactory.create starting…");
+    const app = await NestFactory.create<NestExpressApplication>(
+      AppModule,
+      new ExpressAdapter(expressApp),
+      { bufferLogs: true },
+    );
+    console.log("[api] NestFactory.create done — applying middleware…");
+    app.useGlobalFilters(new ZodExceptionFilter());
+    app.use(compressionMiddleware());
+    app.use(createRequestConcurrencyMiddleware());
+    app.enableCors({
+      origin: parseCorsOrigins(),
+      credentials: true,
+    });
+    app.useStaticAssets(join(process.cwd(), "data", "uploads"), { prefix: "/uploads/" });
+    console.log("[api] app.init starting…");
+    await app.init();
+    nestReady = true;
+    nestError = null;
+    console.log(`[api] Nest ready on http://${host}:${port} (${BOOT_MARK})`);
+  } catch (err) {
+    nestError = err instanceof Error ? err.message : String(err);
+    console.error("[api] Nest init failed after early /health bind:", err);
+    // Keep early /health alive so Railway does not flap; clients see nest:false + error.
+  }
 }
 
 bootstrap().catch((err) => {
-  console.error(err);
+  console.error("[api] Nest bootstrap failed:", err);
   const port = Number(process.env.PORT ?? 3000);
   const host = process.env.HOST ?? "0.0.0.0";
-  // If early listen already took the port, this may fail — that's OK; /health still answers.
+  // If early listen already took the port, Nest failed after /health was bound —
+  // leave that process up (Railway stays "healthy") and surface the error in logs.
+  // Only start a separate fallback if early listen never claimed the port.
   try {
     listenFallbackHealth(host, port);
   } catch {
-    // ignore
+    // ignore — early /health already owns $PORT
   }
 });
