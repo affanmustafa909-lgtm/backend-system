@@ -71,6 +71,7 @@ async function bootstrap(): Promise<void> {
     res.status(200).json({
       status: "ok",
       nest: nestReady,
+      boot: "early-express",
       ts: new Date().toISOString(),
     });
   });

@@ -106,5 +106,6 @@ warnIfMissing("DATABASE_URL");
 warnIfMissing("JWT_ACCESS_SECRET");
 mkdirSync(join(apiRoot, "data", "uploads"), { recursive: true });
 
+console.log("[railway] boot-mode=early-express (Nest binds /health before module init)");
 startApiServer();
 startBootstrapInBackground();
