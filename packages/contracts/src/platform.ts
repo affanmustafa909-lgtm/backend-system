@@ -19,6 +19,22 @@ export const SYSTEM_TYPES = [
 export const systemTypeSchema = z.enum(SYSTEM_TYPES);
 export type SystemType = z.infer<typeof systemTypeSchema>;
 
+/**
+ * API response reader — accepts known types plus any future slug.
+ * Keeps Super Admin Overview / Businesses from hard-crashing when Live API
+ * returns a systemType the installed client enum has not caught up with yet.
+ * Create/update payloads still use strict `systemTypeSchema`.
+ */
+export const systemTypeReadSchema = z.union([
+  systemTypeSchema,
+  z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z][a-z0-9_]*$/, "Invalid system type"),
+]);
+
+
 export const SYSTEM_TYPE_LABELS: Record<SystemType, string> = {
   restaurant: "Restaurant POS",
   ice_cream: "Ice Cream POS",
@@ -222,7 +238,7 @@ export function permissionsForPlatformRole(role: PlatformRole): string[] {
 export const businessSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
-  systemType: systemTypeSchema,
+  systemType: systemTypeReadSchema,
   status: businessStatusSchema,
   licenceKey: z.string().nullable(),
   licencePlan: z.string().nullable(),
@@ -310,7 +326,7 @@ export const createLicencePaymentSchema = z.object({
 export const monthlyLicenceRowSchema = z.object({
   organizationId: z.string().uuid(),
   businessName: z.string(),
-  systemType: systemTypeSchema,
+  systemType: systemTypeReadSchema,
   status: businessStatusSchema,
   adminEmail: z.string().nullable(),
   licencePlan: z.string().nullable(),
@@ -425,7 +441,7 @@ export const platformUserSchema = z.object({
   platformRole: platformRoleSchema.nullable(),
   businessId: z.string().uuid().nullable(),
   businessName: z.string().nullable(),
-  systemType: systemTypeSchema.nullable(),
+  systemType: systemTypeReadSchema.nullable(),
   status: z.string(),
   active: z.boolean(),
   createdAt: z.string(),
@@ -483,7 +499,7 @@ export const platformAnalyticsSchema = z.object({
   expiringSoonLicences: z.number().int().nonnegative().default(0),
   bySystemType: z.array(
     z.object({
-      systemType: systemTypeSchema,
+      systemType: systemTypeReadSchema,
       count: z.number().int().nonnegative(),
     }),
   ),
