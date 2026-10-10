@@ -19,6 +19,8 @@ COPY packages ./packages
 COPY api ./api
 COPY scripts ./scripts
 RUN pnpm install --frozen-lockfile=false
+# Never reuse host incremental buildinfo without dist/ (causes MODULE_NOT_FOUND on Railway).
+RUN rm -rf /app/api/dist /app/api/*.tsbuildinfo
 RUN pnpm turbo run build --filter=@platform/api
 
 FROM node:22-bookworm-slim AS runner
