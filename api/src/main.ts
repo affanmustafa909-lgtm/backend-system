@@ -2,8 +2,9 @@ import "reflect-metadata";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import { NestFactory } from "@nestjs/core";
-import { NestExpressApplication } from "@nestjs/platform-express";
+import { ExpressAdapter, NestExpressApplication } from "@nestjs/platform-express";
 import compression from "compression";
+import express from "express";
 import { AppModule } from "./app.module";
 import { ZodExceptionFilter } from "./common/zod-exception.filter";
 import { createRequestConcurrencyMiddleware } from "./load/requestConcurrency";
@@ -58,7 +59,36 @@ async function bootstrap(): Promise<void> {
   const host = process.env.HOST ?? "0.0.0.0";
   console.log(`[api] Bootstrapping on ${host}:${port} (NODE_ENV=${process.env.NODE_ENV ?? "development"})`);
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
+  /**
+   * Bind `/health` BEFORE NestFactory.create.
+   * Railway healthchecks `$PORT/health` immediately; Nest module init can take
+   * a long time (or hang). A separate proxy left Nest unreachable (`nest:false`)
+   * and the app showed Offline even though the user was online.
+   */
+  const expressApp = express();
+  let nestReady = false;
+  expressApp.get("/health", (_req, res) => {
+    res.status(200).json({
+      status: "ok",
+      nest: nestReady,
+      ts: new Date().toISOString(),
+    });
+  });
+
+  const httpServer = createServer(expressApp);
+  await new Promise<void>((resolve, reject) => {
+    httpServer.once("error", reject);
+    httpServer.listen(port, host, () => {
+      console.log(`[api] Early /health listening on http://${host}:${port}`);
+      resolve();
+    });
+  });
+
+  const app = await NestFactory.create<NestExpressApplication>(
+    AppModule,
+    new ExpressAdapter(expressApp),
+    { bufferLogs: true },
+  );
   app.useGlobalFilters(new ZodExceptionFilter());
   app.use(compressionMiddleware());
   app.use(createRequestConcurrencyMiddleware());
@@ -67,13 +97,19 @@ async function bootstrap(): Promise<void> {
     credentials: true,
   });
   app.useStaticAssets(join(process.cwd(), "data", "uploads"), { prefix: "/uploads/" });
-  await app.listen(port, host);
-  console.log(`[api] Listening on http://${host}:${port}`);
+  await app.init();
+  nestReady = true;
+  console.log(`[api] Nest ready on http://${host}:${port}`);
 }
 
 bootstrap().catch((err) => {
   console.error(err);
   const port = Number(process.env.PORT ?? 3000);
   const host = process.env.HOST ?? "0.0.0.0";
-  listenFallbackHealth(host, port);
+  // If early listen already took the port, this may fail — that's OK; /health still answers.
+  try {
+    listenFallbackHealth(host, port);
+  } catch {
+    // ignore
+  }
 });

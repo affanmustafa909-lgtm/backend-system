@@ -53,6 +53,9 @@ importers:
       drizzle-orm:
         specifier: ^0.38.4
         version: 0.38.4(@types/pg@8.20.0)(pg@8.22.0)
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
       nodemailer:
         specifier: ^6.10.0
         version: 6.10.1
