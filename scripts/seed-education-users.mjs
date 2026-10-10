@@ -3,14 +3,17 @@
  * Usage: node scripts/seed-education-users.mjs
  * Requires local API at http://127.0.0.1:3000 and DATABASE_URL in backend .env
  */
-import bcrypt from "bcryptjs";
-import pg from "pg";
+import { createRequire } from "node:module";
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
+const requireDb = createRequire(join(root, "packages/database-pg/package.json"));
+const requireApi = createRequire(join(root, "api/package.json"));
+const pg = requireDb("pg");
+const bcrypt = requireApi("bcryptjs");
 
 function loadEnv() {
   const envPath = join(root, ".env");

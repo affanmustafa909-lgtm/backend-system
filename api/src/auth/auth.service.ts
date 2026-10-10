@@ -17,6 +17,7 @@ import * as bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "node:crypto";
 import {
   applyOrgModuleCeiling,
+  navAllowlistForPopsRole,
   permissionsForPlatformRole,
   permissionsForPopsRole,
   systemTypeSchema,
@@ -188,6 +189,12 @@ export class AuthService implements OnModuleInit {
       });
     }
 
+    await this.ensureEducationDemoStaff().catch((err) => {
+      this.logger.warn(
+        `Education demo staff seed skipped: ${err instanceof Error ? err.message : err}`,
+      );
+    });
+
     const existingModule = await this.db.select({ id: modules.id }).from(modules).where(eq(modules.slug, "sample")).limit(1);
     if (existingModule.length === 0) {
       await this.db.insert(modules).values({
@@ -353,6 +360,146 @@ export class AuthService implements OnModuleInit {
         name: input.branchName,
         city: input.city,
       });
+    }
+  }
+
+  /** Demo role logins for EducationFlow E2E / QA (Staff@12345). */
+  private async ensureEducationDemoStaff(): Promise<void> {
+    const org = await this.db
+      .select({ id: organizations.id, status: organizations.status })
+      .from(organizations)
+      .where(eq(organizations.licenceKey, "LIC-DEMO-EDUCATION"))
+      .limit(1);
+    const orgId = org[0]?.id;
+    if (!orgId || org[0]?.status === "deleted") return;
+
+    const staffPassword =
+      this.config.get<string>("SEED_STAFF_PASSWORD") ?? "Staff@12345";
+    const staffHash = await bcrypt.hash(staffPassword, 12);
+
+    const roleUsers: Array<{
+      email: string;
+      name: string;
+      role: string;
+      perms: string[];
+    }> = [
+      {
+        email: "principal.education@pops.demo",
+        name: "Principal",
+        role: "manager",
+        perms: ["pops.read", "pops.inventory.manage", "pops.users.manage", "pops.hr.manage"],
+      },
+      {
+        email: "teacher.education@pops.demo",
+        name: "Teacher Demo",
+        role: "teacher",
+        perms: ["pops.read", "pops.inventory.manage"],
+      },
+      {
+        email: "accountant.education@pops.demo",
+        name: "Accountant Demo",
+        role: "accountant",
+        perms: ["pops.read", "pops.accounting.manage", "finance.view", "finance.post"],
+      },
+      {
+        email: "hr.education@pops.demo",
+        name: "HR Demo",
+        role: "hr",
+        perms: ["pops.read", "pops.hr.manage"],
+      },
+      {
+        email: "reception.education@pops.demo",
+        name: "Receptionist",
+        role: "cashier",
+        perms: ["pops.read"],
+      },
+      {
+        email: "student.education@pops.demo",
+        name: "Student Demo",
+        role: "student",
+        perms: ["pops.read"],
+      },
+      {
+        email: "parent.education@pops.demo",
+        name: "Parent Demo",
+        role: "parent",
+        perms: ["pops.read"],
+      },
+    ];
+
+    for (const u of roleUsers) {
+      const email = u.email.trim().toLowerCase();
+      const existing = await this.db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+      let userId = existing[0]?.id;
+      if (!userId) {
+        const [created] = await this.db
+          .insert(users)
+          .values({
+            email,
+            name: u.name,
+            passwordHash: staffHash,
+            lastSetPassword: staffPassword,
+            status: "active",
+          })
+          .returning({ id: users.id });
+        userId = created?.id;
+      } else {
+        await this.db
+          .update(users)
+          .set({
+            name: u.name,
+            passwordHash: staffHash,
+            lastSetPassword: staffPassword,
+            status: "active",
+          })
+          .where(eq(users.id, userId));
+      }
+      if (!userId) continue;
+
+      const nav = navAllowlistForPopsRole(u.role);
+      const mem = await this.db
+        .select({ userId: organizationMemberships.userId })
+        .from(organizationMemberships)
+        .where(
+          and(
+            eq(organizationMemberships.organizationId, orgId),
+            eq(organizationMemberships.userId, userId),
+          ),
+        )
+        .limit(1);
+      if (mem.length === 0) {
+        await this.db.insert(organizationMemberships).values({
+          organizationId: orgId,
+          userId,
+          role: u.role,
+          permissions: u.perms.length ? u.perms : permissionsForPopsRole(u.role),
+          branchScope: "all",
+          pinRequired: false,
+          active: true,
+          navAllowlist: nav,
+          lastActivityAt: new Date(),
+        });
+      } else {
+        await this.db
+          .update(organizationMemberships)
+          .set({
+            role: u.role,
+            permissions: u.perms.length ? u.perms : permissionsForPopsRole(u.role),
+            branchScope: "all",
+            active: true,
+            navAllowlist: nav,
+          })
+          .where(
+            and(
+              eq(organizationMemberships.organizationId, orgId),
+              eq(organizationMemberships.userId, userId),
+            ),
+          );
+      }
     }
   }
 
