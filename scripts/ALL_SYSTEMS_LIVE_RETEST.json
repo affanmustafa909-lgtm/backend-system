@@ -1,0 +1,1264 @@
+{
+  "api": "https://backend-system-production-28a3.up.railway.app",
+  "at": "2026-10-10T17:43:23.667Z",
+  "health": {
+    "status": "ok",
+    "nest": true,
+    "boot": "early-express-v2",
+    "error": null,
+    "ts": "2026-10-10T17:42:36.148Z"
+  },
+  "totals": {
+    "total": 142,
+    "passed": 142,
+    "failed": 0
+  },
+  "bySystem": {
+    "infra": {
+      "pass": 1,
+      "fail": 0,
+      "total": 1
+    },
+    "platform": {
+      "pass": 8,
+      "fail": 0,
+      "total": 8
+    },
+    "restaurant": {
+      "pass": 23,
+      "fail": 0,
+      "total": 23
+    },
+    "ice_cream": {
+      "pass": 8,
+      "fail": 0,
+      "total": 8
+    },
+    "pharmacy": {
+      "pass": 16,
+      "fail": 0,
+      "total": 16
+    },
+    "distribution": {
+      "pass": 36,
+      "fail": 0,
+      "total": 36
+    },
+    "general_store": {
+      "pass": 16,
+      "fail": 0,
+      "total": 16
+    },
+    "grocery": {
+      "pass": 6,
+      "fail": 0,
+      "total": 6
+    },
+    "retail": {
+      "pass": 6,
+      "fail": 0,
+      "total": 6
+    },
+    "education": {
+      "pass": 20,
+      "fail": 0,
+      "total": 20
+    },
+    "isolation": {
+      "pass": 2,
+      "fail": 0,
+      "total": 2
+    }
+  },
+  "failures": [],
+  "results": [
+    {
+      "system": "infra",
+      "name": "GET /health",
+      "ok": true,
+      "status": 200,
+      "ms": 755,
+      "error": null,
+      "meta": {
+        "status": "ok",
+        "nest": true,
+        "boot": "early-express-v2",
+        "error": null,
+        "ts": "2026-10-10T17:42:36.148Z"
+      }
+    },
+    {
+      "system": "platform",
+      "name": "POST /v1/auth/login (superadmin@pops.platform)",
+      "ok": true,
+      "status": 200,
+      "ms": 560,
+      "error": null,
+      "meta": {
+        "role": "super_admin",
+        "systemType": null,
+        "organizationId": "00000000-0000-0000-0000-000000000000"
+      }
+    },
+    {
+      "system": "platform",
+      "name": "GET /v1/platform/system-types",
+      "ok": true,
+      "status": 200,
+      "ms": 272,
+      "error": null
+    },
+    {
+      "system": "platform",
+      "name": "GET /v1/platform/businesses",
+      "ok": true,
+      "status": 200,
+      "ms": 328,
+      "error": null
+    },
+    {
+      "system": "platform",
+      "name": "GET /v1/platform/users",
+      "ok": true,
+      "status": 200,
+      "ms": 282,
+      "error": null
+    },
+    {
+      "system": "platform",
+      "name": "GET /v1/platform/analytics",
+      "ok": true,
+      "status": 200,
+      "ms": 287,
+      "error": null
+    },
+    {
+      "system": "platform",
+      "name": "GET /v1/platform/settings",
+      "ok": true,
+      "status": 200,
+      "ms": 289,
+      "error": null
+    },
+    {
+      "system": "platform",
+      "name": "GET /v1/platform/licence-payments",
+      "ok": true,
+      "status": 200,
+      "ms": 274,
+      "error": null
+    },
+    {
+      "system": "platform",
+      "name": "GET /v1/platform/public-info",
+      "ok": true,
+      "status": 200,
+      "ms": 276,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "POST /v1/auth/login (admin.restaurant@pops.demo)",
+      "ok": true,
+      "status": 200,
+      "ms": 557,
+      "error": null,
+      "meta": {
+        "role": "owner",
+        "systemType": "restaurant",
+        "organizationId": "369702ba-9838-4578-97f4-cb80eec7be8d"
+      }
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/operations/branches",
+      "ok": true,
+      "status": 200,
+      "ms": 285,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/operations/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 292,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/menu",
+      "ok": true,
+      "status": 200,
+      "ms": 313,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/billing/orders",
+      "ok": true,
+      "status": 200,
+      "ms": 274,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/billing/waiters",
+      "ok": true,
+      "status": 200,
+      "ms": 271,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/kitchen/tickets",
+      "ok": true,
+      "status": 200,
+      "ms": 299,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/tables",
+      "ok": true,
+      "status": 200,
+      "ms": 290,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/tables/admin",
+      "ok": true,
+      "status": 200,
+      "ms": 291,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/inventory",
+      "ok": true,
+      "status": 200,
+      "ms": 337,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/hr/employees",
+      "ok": true,
+      "status": 200,
+      "ms": 288,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/users",
+      "ok": true,
+      "status": 200,
+      "ms": 273,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/accounting/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 354,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/accounting/expenses",
+      "ok": true,
+      "status": 200,
+      "ms": 272,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/accounting/payable",
+      "ok": true,
+      "status": 200,
+      "ms": 278,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/accounting/receivable",
+      "ok": true,
+      "status": 200,
+      "ms": 286,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/delivery/orders",
+      "ok": true,
+      "status": 200,
+      "ms": 273,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/reports/catalog",
+      "ok": true,
+      "status": 200,
+      "ms": 272,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/printing/printers",
+      "ok": true,
+      "status": 200,
+      "ms": 278,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/multi-branch/overview",
+      "ok": true,
+      "status": 200,
+      "ms": 310,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/notifications/overview",
+      "ok": true,
+      "status": 200,
+      "ms": 297,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/org/alerts",
+      "ok": true,
+      "status": 200,
+      "ms": 276,
+      "error": null
+    },
+    {
+      "system": "restaurant",
+      "name": "GET /v1/sync/status",
+      "ok": true,
+      "status": 200,
+      "ms": 285,
+      "error": null
+    },
+    {
+      "system": "ice_cream",
+      "name": "POST /v1/auth/login (admin.icecream@pops.demo)",
+      "ok": true,
+      "status": 200,
+      "ms": 573,
+      "error": null,
+      "meta": {
+        "role": "owner",
+        "systemType": "ice_cream",
+        "organizationId": "09212ea3-695a-41ff-97f6-dceba2367e75"
+      }
+    },
+    {
+      "system": "ice_cream",
+      "name": "GET /v1/operations/branches",
+      "ok": true,
+      "status": 200,
+      "ms": 277,
+      "error": null
+    },
+    {
+      "system": "ice_cream",
+      "name": "GET /v1/menu",
+      "ok": true,
+      "status": 200,
+      "ms": 302,
+      "error": null
+    },
+    {
+      "system": "ice_cream",
+      "name": "GET /v1/billing/orders",
+      "ok": true,
+      "status": 200,
+      "ms": 271,
+      "error": null
+    },
+    {
+      "system": "ice_cream",
+      "name": "GET /v1/kitchen/tickets",
+      "ok": true,
+      "status": 200,
+      "ms": 283,
+      "error": null
+    },
+    {
+      "system": "ice_cream",
+      "name": "GET /v1/inventory",
+      "ok": true,
+      "status": 200,
+      "ms": 309,
+      "error": null
+    },
+    {
+      "system": "ice_cream",
+      "name": "GET /v1/accounting/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 331,
+      "error": null
+    },
+    {
+      "system": "ice_cream",
+      "name": "GET /v1/hr/employees",
+      "ok": true,
+      "status": 200,
+      "ms": 287,
+      "error": null
+    },
+    {
+      "system": "pharmacy",
+      "name": "POST /v1/auth/login (admin.pharmacy@pops.demo)",
+      "ok": true,
+      "status": 200,
+      "ms": 551,
+      "error": null,
+      "meta": {
+        "role": "owner",
+        "systemType": "pharmacy",
+        "organizationId": "7ee2c4a1-e086-4728-904a-bb55c6bd4d64"
+      }
+    },
+    {
+      "system": "pharmacy",
+      "name": "GET /v1/operations/branches",
+      "ok": true,
+      "status": 200,
+      "ms": 275,
+      "error": null
+    },
+    {
+      "system": "pharmacy",
+      "name": "GET /v1/pharmacy/lookup",
+      "ok": true,
+      "status": 200,
+      "ms": 355,
+      "error": null
+    },
+    {
+      "system": "pharmacy",
+      "name": "GET /v1/pharmacy/medicines",
+      "ok": true,
+      "status": 200,
+      "ms": 314,
+      "error": null
+    },
+    {
+      "system": "pharmacy",
+      "name": "GET /v1/pharmacy/companies",
+      "ok": true,
+      "status": 200,
+      "ms": 278,
+      "error": null
+    },
+    {
+      "system": "pharmacy",
+      "name": "GET /v1/pharmacy/trade-customers",
+      "ok": true,
+      "status": 200,
+      "ms": 279,
+      "error": null
+    },
+    {
+      "system": "pharmacy",
+      "name": "GET /v1/pharmacy/warehouses",
+      "ok": true,
+      "status": 200,
+      "ms": 288,
+      "error": null
+    },
+    {
+      "system": "pharmacy",
+      "name": "GET /v1/pharmacy/masters/medicines",
+      "ok": true,
+      "status": 200,
+      "ms": 280,
+      "error": null
+    },
+    {
+      "system": "pharmacy",
+      "name": "GET /v1/pharmacy/inventory/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 358,
+      "error": null
+    },
+    {
+      "system": "pharmacy",
+      "name": "GET /v1/pharmacy/inventory/stock",
+      "ok": true,
+      "status": 200,
+      "ms": 286,
+      "error": null
+    },
+    {
+      "system": "pharmacy",
+      "name": "GET /v1/pharmacy/sales/returns",
+      "ok": true,
+      "status": 200,
+      "ms": 275,
+      "error": null
+    },
+    {
+      "system": "pharmacy",
+      "name": "GET /v1/pharmacy/purchase/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 317,
+      "error": null
+    },
+    {
+      "system": "pharmacy",
+      "name": "GET /v1/pharmacy/purchase/orders",
+      "ok": true,
+      "status": 200,
+      "ms": 281,
+      "error": null
+    },
+    {
+      "system": "pharmacy",
+      "name": "GET /v1/accounting/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 443,
+      "error": null
+    },
+    {
+      "system": "pharmacy",
+      "name": "GET /v1/hr/employees",
+      "ok": true,
+      "status": 200,
+      "ms": 285,
+      "error": null
+    },
+    {
+      "system": "pharmacy",
+      "name": "GET /v1/users",
+      "ok": true,
+      "status": 200,
+      "ms": 292,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "POST /v1/auth/login (admin.distribution@pops.demo)",
+      "ok": true,
+      "status": 200,
+      "ms": 563,
+      "error": null,
+      "meta": {
+        "role": "owner",
+        "systemType": "distribution",
+        "organizationId": "7b47c716-0425-4b0f-b7c1-4919cbeb8ec4"
+      }
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/operations/branches",
+      "ok": true,
+      "status": 200,
+      "ms": 273,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/distribution/dashboard/summary",
+      "ok": true,
+      "status": 200,
+      "ms": 284,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/distribution/dashboard/sales-trend",
+      "ok": true,
+      "status": 200,
+      "ms": 429,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/distribution/dashboard/action-center",
+      "ok": true,
+      "status": 200,
+      "ms": 283,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/distribution/dashboard/stock-health",
+      "ok": true,
+      "status": 200,
+      "ms": 471,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/distribution/ps-window",
+      "ok": true,
+      "status": 200,
+      "ms": 282,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/distribution/orders",
+      "ok": true,
+      "status": 200,
+      "ms": 304,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/distribution/invoices",
+      "ok": true,
+      "status": 200,
+      "ms": 290,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/trade-customers",
+      "ok": true,
+      "status": 200,
+      "ms": 288,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/warehouses",
+      "ok": true,
+      "status": 200,
+      "ms": 285,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/medicines",
+      "ok": true,
+      "status": 200,
+      "ms": 299,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/inventory/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 382,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/inventory/stock",
+      "ok": true,
+      "status": 200,
+      "ms": 288,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/inventory/batches",
+      "ok": true,
+      "status": 200,
+      "ms": 289,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/purchase/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 361,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/purchase/orders",
+      "ok": true,
+      "status": 200,
+      "ms": 296,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/purchase/grns",
+      "ok": true,
+      "status": 200,
+      "ms": 287,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/delivery/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 275,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/delivery/orders",
+      "ok": true,
+      "status": 200,
+      "ms": 316,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/collections/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 278,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/collections/aging",
+      "ok": true,
+      "status": 200,
+      "ms": 283,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/finance/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 659,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/field-force/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 313,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/field-force/visits",
+      "ok": true,
+      "status": 200,
+      "ms": 291,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/io/modules",
+      "ok": true,
+      "status": 200,
+      "ms": 273,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/companies",
+      "ok": true,
+      "status": 200,
+      "ms": 275,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/territories",
+      "ok": true,
+      "status": 200,
+      "ms": 278,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/routes",
+      "ok": true,
+      "status": 200,
+      "ms": 275,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/sales-force",
+      "ok": true,
+      "status": 200,
+      "ms": 284,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/pharmacy/pricing/lists",
+      "ok": true,
+      "status": 200,
+      "ms": 394,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/accounting/accounts",
+      "ok": true,
+      "status": 200,
+      "ms": 351,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/accounting/ledger",
+      "ok": true,
+      "status": 200,
+      "ms": 331,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/sync/status",
+      "ok": true,
+      "status": 200,
+      "ms": 273,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/hr/employees",
+      "ok": true,
+      "status": 200,
+      "ms": 284,
+      "error": null
+    },
+    {
+      "system": "distribution",
+      "name": "GET /v1/users",
+      "ok": true,
+      "status": 200,
+      "ms": 279,
+      "error": null
+    },
+    {
+      "system": "general_store",
+      "name": "POST /v1/auth/login (admin.store@pops.demo)",
+      "ok": true,
+      "status": 200,
+      "ms": 551,
+      "error": null,
+      "meta": {
+        "role": "owner",
+        "systemType": "general_store",
+        "organizationId": "82a39bf1-1155-4088-81a4-425bffacafe1"
+      }
+    },
+    {
+      "system": "general_store",
+      "name": "GET /v1/operations/branches",
+      "ok": true,
+      "status": 200,
+      "ms": 286,
+      "error": null
+    },
+    {
+      "system": "general_store",
+      "name": "GET /v1/store/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 342,
+      "error": null
+    },
+    {
+      "system": "general_store",
+      "name": "GET /v1/store/categories",
+      "ok": true,
+      "status": 200,
+      "ms": 301,
+      "error": null
+    },
+    {
+      "system": "general_store",
+      "name": "GET /v1/store/brands",
+      "ok": true,
+      "status": 200,
+      "ms": 284,
+      "error": null
+    },
+    {
+      "system": "general_store",
+      "name": "GET /v1/store/units",
+      "ok": true,
+      "status": 200,
+      "ms": 286,
+      "error": null
+    },
+    {
+      "system": "general_store",
+      "name": "GET /v1/store/products",
+      "ok": true,
+      "status": 200,
+      "ms": 385,
+      "error": null
+    },
+    {
+      "system": "general_store",
+      "name": "GET /v1/store/batches",
+      "ok": true,
+      "status": 200,
+      "ms": 279,
+      "error": null
+    },
+    {
+      "system": "general_store",
+      "name": "GET /v1/store/suppliers",
+      "ok": true,
+      "status": 200,
+      "ms": 288,
+      "error": null
+    },
+    {
+      "system": "general_store",
+      "name": "GET /v1/store/customers",
+      "ok": true,
+      "status": 200,
+      "ms": 283,
+      "error": null
+    },
+    {
+      "system": "general_store",
+      "name": "GET /v1/store/warehouses",
+      "ok": true,
+      "status": 200,
+      "ms": 286,
+      "error": null
+    },
+    {
+      "system": "general_store",
+      "name": "GET /v1/store/purchase/orders",
+      "ok": true,
+      "status": 200,
+      "ms": 292,
+      "error": null
+    },
+    {
+      "system": "general_store",
+      "name": "GET /v1/store/purchase/grn",
+      "ok": true,
+      "status": 200,
+      "ms": 283,
+      "error": null
+    },
+    {
+      "system": "general_store",
+      "name": "GET /v1/accounting/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 337,
+      "error": null
+    },
+    {
+      "system": "general_store",
+      "name": "GET /v1/hr/employees",
+      "ok": true,
+      "status": 200,
+      "ms": 290,
+      "error": null
+    },
+    {
+      "system": "general_store",
+      "name": "GET /v1/users",
+      "ok": true,
+      "status": 200,
+      "ms": 280,
+      "error": null
+    },
+    {
+      "system": "grocery",
+      "name": "POST /v1/auth/login (admin.grocery@pops.demo)",
+      "ok": true,
+      "status": 200,
+      "ms": 574,
+      "error": null,
+      "meta": {
+        "role": "owner",
+        "systemType": "grocery",
+        "organizationId": "246125e0-a2ff-48a0-b4b9-206192cc19b3"
+      }
+    },
+    {
+      "system": "grocery",
+      "name": "GET /v1/operations/branches",
+      "ok": true,
+      "status": 200,
+      "ms": 275,
+      "error": null
+    },
+    {
+      "system": "grocery",
+      "name": "GET /v1/store/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 311,
+      "error": null
+    },
+    {
+      "system": "grocery",
+      "name": "GET /v1/store/products",
+      "ok": true,
+      "status": 200,
+      "ms": 389,
+      "error": null
+    },
+    {
+      "system": "grocery",
+      "name": "GET /v1/store/customers",
+      "ok": true,
+      "status": 200,
+      "ms": 280,
+      "error": null
+    },
+    {
+      "system": "grocery",
+      "name": "GET /v1/accounting/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 339,
+      "error": null
+    },
+    {
+      "system": "retail",
+      "name": "POST /v1/auth/login (admin.retail@pops.demo)",
+      "ok": true,
+      "status": 200,
+      "ms": 732,
+      "error": null,
+      "meta": {
+        "role": "owner",
+        "systemType": "retail",
+        "organizationId": "a7e986c6-6793-40d6-bede-c9777432951e"
+      }
+    },
+    {
+      "system": "retail",
+      "name": "GET /v1/operations/branches",
+      "ok": true,
+      "status": 200,
+      "ms": 360,
+      "error": null
+    },
+    {
+      "system": "retail",
+      "name": "GET /v1/store/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 309,
+      "error": null
+    },
+    {
+      "system": "retail",
+      "name": "GET /v1/store/products",
+      "ok": true,
+      "status": 200,
+      "ms": 383,
+      "error": null
+    },
+    {
+      "system": "retail",
+      "name": "GET /v1/store/customers",
+      "ok": true,
+      "status": 200,
+      "ms": 282,
+      "error": null
+    },
+    {
+      "system": "retail",
+      "name": "GET /v1/accounting/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 338,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "POST /v1/auth/login (admin.education@pops.demo)",
+      "ok": true,
+      "status": 200,
+      "ms": 571,
+      "error": null,
+      "meta": {
+        "role": "owner",
+        "systemType": "education",
+        "organizationId": "407dd958-3a58-404d-a1ae-96f42bf6184d"
+      }
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/operations/branches",
+      "ok": true,
+      "status": 200,
+      "ms": 272,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/education/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 300,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/education/modules",
+      "ok": true,
+      "status": 200,
+      "ms": 277,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/education/settings",
+      "ok": true,
+      "status": 200,
+      "ms": 279,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/education/lookups",
+      "ok": true,
+      "status": 200,
+      "ms": 301,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/education/sessions",
+      "ok": true,
+      "status": 200,
+      "ms": 294,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/education/classes",
+      "ok": true,
+      "status": 200,
+      "ms": 288,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/education/sections",
+      "ok": true,
+      "status": 200,
+      "ms": 277,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/education/subjects",
+      "ok": true,
+      "status": 200,
+      "ms": 281,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/education/students",
+      "ok": true,
+      "status": 200,
+      "ms": 286,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/education/admissions",
+      "ok": true,
+      "status": 200,
+      "ms": 283,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/education/staff",
+      "ok": true,
+      "status": 200,
+      "ms": 289,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/education/guardians",
+      "ok": true,
+      "status": 200,
+      "ms": 281,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/education/fee-structures",
+      "ok": true,
+      "status": 200,
+      "ms": 290,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/education/fee-invoices",
+      "ok": true,
+      "status": 200,
+      "ms": 274,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/education/fee-payments",
+      "ok": true,
+      "status": 200,
+      "ms": 277,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/hr/employees",
+      "ok": true,
+      "status": 200,
+      "ms": 363,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/accounting/dashboard",
+      "ok": true,
+      "status": 200,
+      "ms": 338,
+      "error": null
+    },
+    {
+      "system": "education",
+      "name": "GET /v1/users",
+      "ok": true,
+      "status": 200,
+      "ms": 277,
+      "error": null
+    },
+    {
+      "system": "isolation",
+      "name": "restaurant token → GET /v1/education/dashboard blocked",
+      "ok": true,
+      "status": 403,
+      "ms": 267,
+      "error": null
+    },
+    {
+      "system": "isolation",
+      "name": "restaurant token → dist dashboard blocked",
+      "ok": true,
+      "status": 403,
+      "ms": 281,
+      "error": null
+    }
+  ]
+}
