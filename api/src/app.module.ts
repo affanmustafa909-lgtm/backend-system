@@ -8,6 +8,7 @@ import { CatalogModule } from "./catalog/catalog.module";
 import { DeliveryModule } from "./delivery/delivery.module";
 import { DrizzleModule } from "./drizzle/drizzle.module";
 import { MailModule } from "./mail/mail.module";
+import { GoogleDriveModule } from "./google-drive/google-drive.module";
 import { HealthModule } from "./health/health.module";
 import { HrModule } from "./hr/hr.module";
 import { MultiBranchModule } from "./multi-branch/multi-branch.module";
@@ -41,6 +42,8 @@ import { ReportsModule } from "./reports/reports.module";
         join(process.cwd(), "..", "..", ".env"),
         join(process.cwd(), "..", ".env"),
         join(process.cwd(), ".env"),
+        join(process.cwd(), "..", "..", "local", "google-drive.env"),
+        join(process.cwd(), "..", "..", "..", "local", "google-drive.env"),
       ],
     }),
     DrizzleModule,
@@ -71,6 +74,7 @@ import { ReportsModule } from "./reports/reports.module";
     TaxAuthorityModule,
     PrintingModule,
     ReportsModule,
+    GoogleDriveModule,
   ],
 })
 export class AppModule {}

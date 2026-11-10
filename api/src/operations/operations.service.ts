@@ -31,6 +31,7 @@ import { AccountingService } from "../accounting/accounting.service";
 import { BillingService } from "../billing/billing.service";
 import { DRIZZLE } from "../drizzle/drizzle.tokens";
 import type { AccessJwtPayload } from "../auth/jwt.types";
+import { readOrgAppSetting, writeOrgAppSetting } from "../lib/org-app-settings";
 import { wipeBusinessDataByScope } from "../platform/business-reset.wipe";
 
 type CompletedOrder = Awaited<ReturnType<BillingService["listOrders"]>>["orders"][number];
@@ -655,6 +656,30 @@ export class OperationsService implements OnModuleInit {
     const org = rows[0];
     if (!org || org.status === "deleted") throw new NotFoundException("Business not found");
     return { name: org.name };
+  }
+
+  async getMobizoneShopControl(organizationId: string): Promise<Record<string, unknown>> {
+    const value = await readOrgAppSetting(this.db, organizationId, "mobizone.shop-control");
+    if (!value || typeof value !== "object") {
+      return { controlledByDesktop: true, updatedAt: null };
+    }
+    return { ...(value as Record<string, unknown>), controlledByDesktop: true };
+  }
+
+  async putMobizoneShopControl(
+    organizationId: string,
+    body: unknown,
+  ): Promise<Record<string, unknown>> {
+    if (!body || typeof body !== "object") {
+      throw new BadRequestException("Invalid shop control payload");
+    }
+    const payload = {
+      ...(body as Record<string, unknown>),
+      controlledByDesktop: true,
+      updatedAt: new Date().toISOString(),
+    };
+    await writeOrgAppSetting(this.db, organizationId, "mobizone.shop-control", payload);
+    return payload;
   }
 
   /**

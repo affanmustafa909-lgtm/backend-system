@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
 import {
   createPopsBranchSchema,
   orgDataResetSchema,
@@ -52,6 +52,19 @@ export class OperationsController {
   @RequirePermissions("pops.read")
   getBusinessProfile(@CurrentUser() user: AccessJwtPayload) {
     return this.operations.getBusinessProfile(user.organizationId);
+  }
+
+  /** Desktop master shop control (receipt + WhatsApp) for Mobizone mobile. */
+  @Get("mobizone-shop-control")
+  @RequirePermissions("pops.read")
+  getMobizoneShopControl(@CurrentUser() user: AccessJwtPayload) {
+    return this.operations.getMobizoneShopControl(user.organizationId);
+  }
+
+  @Put("mobizone-shop-control")
+  @RequirePermissions("pops.users.manage")
+  putMobizoneShopControl(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
+    return this.operations.putMobizoneShopControl(user.organizationId, body);
   }
 
   @Post("data-reset")
