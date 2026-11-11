@@ -175,6 +175,15 @@ export class AuthService implements OnModuleInit {
         branchName: "Main Campus",
         city: "Islamabad",
       },
+      {
+        systemType: "mobizone",
+        name: "POPS Demo MobiZone",
+        adminEmail: "admin.mobizone@pops.demo",
+        adminName: "MobiZone Owner",
+        branchCode: "MOBI-HQ",
+        branchName: "MobiZone HQ",
+        city: "Islamabad",
+      },
     ];
 
     for (const biz of systemBusinesses) {
