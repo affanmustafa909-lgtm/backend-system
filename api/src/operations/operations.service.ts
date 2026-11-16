@@ -682,6 +682,54 @@ export class OperationsService implements OnModuleInit {
     return payload;
   }
 
+  /** Cloud mirror of a branch Mobizone ledger (desktop ↔ mobile). */
+  async getMobizoneLedger(
+    organizationId: string,
+    branchCode: string,
+  ): Promise<Record<string, unknown>> {
+    const code = (branchCode ?? "").trim().toUpperCase() || "MAIN";
+    const value = await readOrgAppSetting(this.db, organizationId, `mobizone.ledger:${code}`);
+    if (!value || typeof value !== "object") {
+      return { branchCode: code, revisedAt: null, db: null };
+    }
+    return value as Record<string, unknown>;
+  }
+
+  async putMobizoneLedger(
+    organizationId: string,
+    body: unknown,
+  ): Promise<Record<string, unknown>> {
+    if (!body || typeof body !== "object") {
+      throw new BadRequestException("Invalid Mobizone ledger payload");
+    }
+    const input = body as {
+      branchCode?: string;
+      revisedAt?: string;
+      db?: unknown;
+    };
+    const code = (input.branchCode ?? "").trim().toUpperCase() || "MAIN";
+    if (!input.db || typeof input.db !== "object") {
+      throw new BadRequestException("Missing ledger db");
+    }
+    const revisedAt =
+      typeof input.revisedAt === "string" && input.revisedAt.trim()
+        ? input.revisedAt.trim()
+        : new Date().toISOString();
+    const payload = {
+      branchCode: code,
+      revisedAt,
+      db: input.db,
+      updatedAt: new Date().toISOString(),
+    };
+    const json = JSON.stringify(payload);
+    // Guard Postgres jsonb / request size — strip photos client-side; still cap.
+    if (json.length > 4_500_000) {
+      throw new BadRequestException("Mobizone ledger too large to sync (strip photos / Drive links).");
+    }
+    await writeOrgAppSetting(this.db, organizationId, `mobizone.ledger:${code}`, payload);
+    return payload;
+  }
+
   /**
    * Org Settings data wipe: HR, Restaurant (POS/kitchen/cash/journals), or All modules.
    * Confirm with exact business name or the word RESET.

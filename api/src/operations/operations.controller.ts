@@ -67,6 +67,22 @@ export class OperationsController {
     return this.operations.putMobizoneShopControl(user.organizationId, body);
   }
 
+  /** Branch ledger cloud mirror — keeps laptop + mobile Mobizone data aligned. */
+  @Get("mobizone-ledger")
+  @RequirePermissions("pops.read")
+  getMobizoneLedger(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("branchCode") branchCode: string,
+  ) {
+    return this.operations.getMobizoneLedger(user.organizationId, branchCode?.trim() ?? "");
+  }
+
+  @Put("mobizone-ledger")
+  @RequirePermissions("pops.inventory.manage")
+  putMobizoneLedger(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
+    return this.operations.putMobizoneLedger(user.organizationId, body);
+  }
+
   @Post("data-reset")
   @RequirePermissions("pops.users.manage")
   resetOrgData(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
