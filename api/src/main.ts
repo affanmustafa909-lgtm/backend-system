@@ -21,6 +21,11 @@ function desktopCorsPatterns(): RegExp[] {
   ];
 }
 
+function normalizeCorsOrigin(entry: string): string {
+  // Browsers send Origin without a trailing slash; env values often include one.
+  return entry.trim().replace(/\/+$/, "");
+}
+
 function parseCorsOrigins(): boolean | (string | RegExp)[] {
   const raw = process.env.CORS_ORIGINS?.trim();
   if (!raw) {
@@ -31,11 +36,45 @@ function parseCorsOrigins(): boolean | (string | RegExp)[] {
   if (raw === "*") return true;
   const explicit = raw
     .split(",")
-    .map((entry) => entry.trim())
+    .map(normalizeCorsOrigin)
     .filter(Boolean);
   // Installed Tauri apps use https://tauri.localhost — always allow desktop origins
   // even when CORS_ORIGINS is set on Railway (avoids blocking release .exe builds).
   return [...explicit, ...desktopCorsPatterns()];
+}
+
+/** Apply CORS early so preflight works before Nest is ready (and when Nest fails). */
+function applyEarlyCors(expressApp: express.Express): void {
+  const allowed = parseCorsOrigins();
+  expressApp.use((req, res, next) => {
+    const origin = req.headers.origin;
+    let ok = false;
+    if (allowed === true) {
+      ok = true;
+      if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
+      else res.setHeader("Access-Control-Allow-Origin", "*");
+    } else if (origin) {
+      ok = allowed.some((entry) =>
+        typeof entry === "string" ? entry === origin : entry.test(origin),
+      );
+      if (ok) res.setHeader("Access-Control-Allow-Origin", origin);
+    }
+    if (ok) {
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        req.headers["access-control-request-headers"] ||
+          "Authorization, Content-Type, Accept, Origin",
+      );
+      res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS");
+      res.setHeader("Vary", "Origin");
+    }
+    if (req.method === "OPTIONS") {
+      res.status(ok ? 204 : 403).end();
+      return;
+    }
+    next();
+  });
 }
 
 function listenFallbackHealth(host: string, port: number): void {
@@ -70,6 +109,8 @@ async function bootstrap(): Promise<void> {
   let nestError: string | null = null;
   // Distinct from the old public-proxy deploy (`nest:false` forever, no `boot` field).
   const BOOT_MARK = "early-express-v2";
+
+  applyEarlyCors(expressApp);
 
   expressApp.get("/health", (_req, res) => {
     res.status(200).json({
