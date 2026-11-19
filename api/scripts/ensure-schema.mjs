@@ -1642,6 +1642,30 @@ const STATEMENTS = [
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS sync_devices_org_device_uidx ON sync_devices (organization_id, device_id)`,
   `CREATE INDEX IF NOT EXISTS sync_devices_org_user_idx ON sync_devices (organization_id, user_id)`,
+  `CREATE TABLE IF NOT EXISTS platform_media_assets (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    uploaded_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+    kind text NOT NULL DEFAULT 'other',
+    mime_type text NOT NULL,
+    original_name text NOT NULL DEFAULT '',
+    byte_size integer NOT NULL DEFAULT 0,
+    width integer,
+    height integer,
+    duration_sec integer,
+    storage_path text NOT NULL,
+    source text NOT NULL DEFAULT 'upload',
+    flag_status text NOT NULL DEFAULT 'none',
+    flag_note text,
+    flagged_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+    flagged_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    deleted_at timestamptz
+  )`,
+  `CREATE INDEX IF NOT EXISTS platform_media_assets_org_idx ON platform_media_assets (organization_id)`,
+  `CREATE INDEX IF NOT EXISTS platform_media_assets_user_idx ON platform_media_assets (uploaded_by_user_id)`,
+  `CREATE INDEX IF NOT EXISTS platform_media_assets_flag_idx ON platform_media_assets (flag_status)`,
 ];
 function loadEducationSchemaSql(appRoot) {
   const scriptsDir = join(appRoot, "scripts");

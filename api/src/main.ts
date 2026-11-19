@@ -26,7 +26,7 @@ function normalizeCorsOrigin(entry: string): string {
   return entry.trim().replace(/\/+$/, "");
 }
 
-function parseCorsOrigins(): boolean | (string | RegExp)[] {
+function parseCorsOrigins(): true | (string | RegExp)[] {
   const raw = process.env.CORS_ORIGINS?.trim();
   if (!raw) {
     const isProd = process.env.NODE_ENV === "production";

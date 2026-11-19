@@ -15,6 +15,7 @@ export * from "./licence-payments";
 export * from "./licence-reminders";
 export * from "./org-alerts";
 export * from "./platform-settings";
+export * from "./platform-media";
 export * from "./closing";
 export * from "./pharmacy";
 export * from "./pharmacy-erp";
