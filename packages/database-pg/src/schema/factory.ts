@@ -380,3 +380,291 @@ export const factoryPackingRecords = pgTable("factory_packing_records", {
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const factoryPurchaseOrders = pgTable("factory_purchase_orders", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id")
+    .notNull()
+    .references(() => popsBranches.id, { onDelete: "cascade" }),
+  poNumber: text("po_number").notNull(),
+  vendorPartyId: uuid("vendor_party_id").references(() => factoryParties.id, { onDelete: "set null" }),
+  poDate: text("po_date").notNull(),
+  status: text("status").notNull().default("open"),
+  expectedDate: text("expected_date"),
+  amountPkr: integer("amount_pkr").notNull().default(0),
+  notes: text("notes"),
+  detailsJson: text("details_json"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const factoryPurchaseReceipts = pgTable("factory_purchase_receipts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id")
+    .notNull()
+    .references(() => popsBranches.id, { onDelete: "cascade" }),
+  receiptNumber: text("receipt_number").notNull(),
+  vendorPartyId: uuid("vendor_party_id").references(() => factoryParties.id, { onDelete: "set null" }),
+  poId: uuid("po_id").references(() => factoryPurchaseOrders.id, { onDelete: "set null" }),
+  receiptDate: text("receipt_date").notNull(),
+  status: text("status").notNull().default("received"),
+  notes: text("notes"),
+  detailsJson: text("details_json"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const factoryDefectReturns = pgTable("factory_defect_returns", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id")
+    .notNull()
+    .references(() => popsBranches.id, { onDelete: "cascade" }),
+  returnNumber: text("return_number").notNull(),
+  claimSide: text("claim_side").notNull().default("party"),
+  partyId: uuid("party_id").references(() => factoryParties.id, { onDelete: "set null" }),
+  operatorId: uuid("operator_id").references(() => factoryOperators.id, { onDelete: "set null" }),
+  jobId: uuid("job_id").references(() => embroideryJobs.id, { onDelete: "set null" }),
+  returnDate: text("return_date").notNull(),
+  qty: integer("qty").notNull().default(1),
+  defectCode: text("defect_code"),
+  amountPkr: integer("amount_pkr").notNull().default(0),
+  status: text("status").notNull().default("open"),
+  notes: text("notes"),
+  detailsJson: text("details_json"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const factoryHandworkIssues = pgTable("factory_handwork_issues", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id")
+    .notNull()
+    .references(() => popsBranches.id, { onDelete: "cascade" }),
+  issueNumber: text("issue_number").notNull(),
+  karigarPartyId: uuid("karigar_party_id").references(() => factoryParties.id, { onDelete: "set null" }),
+  jobId: uuid("job_id").references(() => embroideryJobs.id, { onDelete: "set null" }),
+  designId: uuid("design_id").references(() => embroideryDesigns.id, { onDelete: "set null" }),
+  issueDate: text("issue_date").notNull(),
+  dueDate: text("due_date"),
+  qty: integer("qty").notNull().default(1),
+  ratePkr: integer("rate_pkr").notNull().default(0),
+  status: text("status").notNull().default("issued"),
+  notes: text("notes"),
+  detailsJson: text("details_json"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const factoryHandworkReturns = pgTable("factory_handwork_returns", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id")
+    .notNull()
+    .references(() => popsBranches.id, { onDelete: "cascade" }),
+  returnNumber: text("return_number").notNull(),
+  issueId: uuid("issue_id").references(() => factoryHandworkIssues.id, { onDelete: "set null" }),
+  returnDate: text("return_date").notNull(),
+  qty: integer("qty").notNull().default(1),
+  lossQty: integer("loss_qty").notNull().default(0),
+  status: text("status").notNull().default("received"),
+  notes: text("notes"),
+  detailsJson: text("details_json"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const factoryAttendance = pgTable("factory_attendance", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id")
+    .notNull()
+    .references(() => popsBranches.id, { onDelete: "cascade" }),
+  operatorId: uuid("operator_id")
+    .notNull()
+    .references(() => factoryOperators.id, { onDelete: "cascade" }),
+  attendDate: text("attend_date").notNull(),
+  shift: text("shift").notNull().default("day"),
+  status: text("status").notNull().default("present"),
+  hours: numeric("hours", { precision: 6, scale: 2 }).notNull().default("8"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const factoryLeave = pgTable("factory_leave", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id")
+    .notNull()
+    .references(() => popsBranches.id, { onDelete: "cascade" }),
+  operatorId: uuid("operator_id")
+    .notNull()
+    .references(() => factoryOperators.id, { onDelete: "cascade" }),
+  fromDate: text("from_date").notNull(),
+  toDate: text("to_date").notNull(),
+  leaveType: text("leave_type").notNull().default("casual"),
+  status: text("status").notNull().default("approved"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const factoryThreadConsumption = pgTable("factory_thread_consumption", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id")
+    .notNull()
+    .references(() => popsBranches.id, { onDelete: "cascade" }),
+  entryDate: text("entry_date").notNull(),
+  designId: uuid("design_id").references(() => embroideryDesigns.id, { onDelete: "set null" }),
+  jobId: uuid("job_id").references(() => embroideryJobs.id, { onDelete: "set null" }),
+  itemId: uuid("item_id").references(() => factoryItems.id, { onDelete: "set null" }),
+  qty: numeric("qty", { precision: 18, scale: 3 }).notNull().default("0"),
+  unit: text("unit").notNull().default("cone"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const factoryStitchRates = pgTable("factory_stitch_rates", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id").references(() => popsBranches.id, { onDelete: "set null" }),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  headArrangement: text("head_arrangement").notNull().default("1-7-11-B"),
+  workType: text("work_type").notNull().default("flat"),
+  ratePer1kPkr: integer("rate_per_1k_pkr").notNull().default(0),
+  notes: text("notes"),
+  active: text("active").notNull().default("yes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const factoryJobOut = pgTable("factory_job_out", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id")
+    .notNull()
+    .references(() => popsBranches.id, { onDelete: "cascade" }),
+  outNumber: text("out_number").notNull(),
+  vendorPartyId: uuid("vendor_party_id").references(() => factoryParties.id, { onDelete: "set null" }),
+  jobId: uuid("job_id").references(() => embroideryJobs.id, { onDelete: "set null" }),
+  outDate: text("out_date").notNull(),
+  dueDate: text("due_date"),
+  qty: integer("qty").notNull().default(1),
+  processName: text("process_name").notNull().default("embroidery"),
+  status: text("status").notNull().default("out"),
+  notes: text("notes"),
+  detailsJson: text("details_json"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const factoryExpenses = pgTable("factory_expenses", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id")
+    .notNull()
+    .references(() => popsBranches.id, { onDelete: "cascade" }),
+  expenseDate: text("expense_date").notNull(),
+  category: text("category").notNull().default("general"),
+  amountPkr: integer("amount_pkr").notNull().default(0),
+  payMode: text("pay_mode").notNull().default("cash"),
+  vendorName: text("vendor_name"),
+  narration: text("narration"),
+  status: text("status").notNull().default("posted"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const factoryMaintenanceLogs = pgTable("factory_maintenance_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id")
+    .notNull()
+    .references(() => popsBranches.id, { onDelete: "cascade" }),
+  machineId: uuid("machine_id").references(() => embroideryMachines.id, { onDelete: "set null" }),
+  serviceDate: text("service_date").notNull(),
+  serviceType: text("service_type").notNull().default("preventive"),
+  costPkr: integer("cost_pkr").notNull().default(0),
+  nextDueDate: text("next_due_date"),
+  notes: text("notes"),
+  status: text("status").notNull().default("done"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const factorySalarySlips = pgTable("factory_salary_slips", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id")
+    .notNull()
+    .references(() => popsBranches.id, { onDelete: "cascade" }),
+  operatorId: uuid("operator_id")
+    .notNull()
+    .references(() => factoryOperators.id, { onDelete: "cascade" }),
+  periodMonth: text("period_month").notNull(),
+  grossPkr: integer("gross_pkr").notNull().default(0),
+  advancesPkr: integer("advances_pkr").notNull().default(0),
+  bonusPkr: integer("bonus_pkr").notNull().default(0),
+  cutsPkr: integer("cuts_pkr").notNull().default(0),
+  netPkr: integer("net_pkr").notNull().default(0),
+  status: text("status").notNull().default("draft"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const factoryEwayRecords = pgTable("factory_eway_records", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id")
+    .notNull()
+    .references(() => popsBranches.id, { onDelete: "cascade" }),
+  ewayNumber: text("eway_number").notNull(),
+  docType: text("doc_type").notNull().default("outward_cn"),
+  docRef: text("doc_ref"),
+  partyId: uuid("party_id").references(() => factoryParties.id, { onDelete: "set null" }),
+  ewayDate: text("eway_date").notNull(),
+  vehicle: text("vehicle"),
+  amountPkr: integer("amount_pkr").notNull().default(0),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const factoryBrokerMasters = pgTable("factory_broker_masters", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branchId: uuid("branch_id").references(() => popsBranches.id, { onDelete: "set null" }),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  phone: text("phone"),
+  commissionPct: numeric("commission_pct", { precision: 6, scale: 2 }).notNull().default("0"),
+  notes: text("notes"),
+  active: text("active").notNull().default("yes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

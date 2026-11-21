@@ -232,6 +232,11 @@ export const embroideryJobSchema = z.object({
   invoiceAmountPkr: z.number().int().nonnegative(),
   invoiceRef: z.string().nullable(),
   notes: z.string().nullable(),
+  inwardChallanId: z.string().uuid().nullable().optional(),
+  factoryOperatorId: z.string().uuid().nullable().optional(),
+  priority: z.enum(["low", "normal", "high", "rush"]).optional(),
+  needleChartJson: z.string().nullable().optional(),
+  detailsJson: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   lines: z.array(embroideryJobLineSchema).default([]),
@@ -347,6 +352,7 @@ export const embroideryQcRecordSchema = z.object({
   notes: z.string().nullable(),
   claimSide: z.string().optional(),
   disposition: z.string().optional(),
+  detailsJson: z.string().nullable().optional(),
   createdAt: z.string(),
 });
 export type EmbroideryQcRecord = z.infer<typeof embroideryQcRecordSchema>;
@@ -360,6 +366,7 @@ export const createEmbroideryQcRecordSchema = z.object({
   notes: z.string().max(2000).optional().nullable(),
   claimSide: z.enum(["party", "operator", "other"]).default("operator"),
   disposition: z.enum(["rework", "scrap", "return", "pass"]).default("rework"),
+  detailsJson: z.string().max(20000).optional().nullable(),
 });
 export type CreateEmbroideryQcRecord = z.infer<typeof createEmbroideryQcRecordSchema>;
 

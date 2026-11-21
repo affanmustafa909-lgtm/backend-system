@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from "@nestjs/common";
+import { z } from "zod";
 import {
   createEmbroideryCustomerOrderSchema,
   createEmbroideryDeliverySchema,
@@ -33,10 +45,26 @@ export class EmbroideryController {
     return user.organizationId;
   }
 
+  private requireUuidParam(id: string, label = "id"): string {
+    const parsed = z.string().uuid().safeParse(id);
+    if (!parsed.success) throw new BadRequestException(`Invalid ${label}`);
+    return parsed.data;
+  }
+
+  private optionalUuidQuery(value: string | undefined, label: string): string | undefined {
+    if (value === undefined || value.trim() === "") return undefined;
+    const parsed = z.string().uuid().safeParse(value.trim());
+    if (!parsed.success) throw new BadRequestException(`Invalid ${label}`);
+    return parsed.data;
+  }
+
   @Get("designs")
   @RequirePermissions("embroidery.read", "embroidery.manage", "*")
   listDesigns(@CurrentUser() user: AccessJwtPayload, @Query("branchId") branchId?: string) {
-    return this.embroidery.listDesigns(this.orgId(user), branchId);
+    return this.embroidery.listDesigns(
+      this.orgId(user),
+      this.optionalUuidQuery(branchId, "branchId"),
+    );
   }
 
   @Post("designs")
@@ -54,7 +82,7 @@ export class EmbroideryController {
   ) {
     return this.embroidery.updateDesign(
       this.orgId(user),
-      id,
+      this.requireUuidParam(id, "design id"),
       updateEmbroideryDesignSchema.parse(body),
     );
   }
@@ -62,19 +90,22 @@ export class EmbroideryController {
   @Delete("designs/:id")
   @RequirePermissions("embroidery.manage", "*")
   deleteDesign(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string) {
-    return this.embroidery.deleteDesign(this.orgId(user), id);
+    return this.embroidery.deleteDesign(this.orgId(user), this.requireUuidParam(id, "design id"));
   }
 
   @Get("designs/:id/file")
   @RequirePermissions("embroidery.read", "embroidery.manage", "*")
   getDesignFile(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string) {
-    return this.embroidery.getDesignFile(this.orgId(user), id);
+    return this.embroidery.getDesignFile(this.orgId(user), this.requireUuidParam(id, "design id"));
   }
 
   @Get("machines")
   @RequirePermissions("embroidery.read", "embroidery.manage", "embroidery.production", "*")
   listMachines(@CurrentUser() user: AccessJwtPayload, @Query("branchId") branchId?: string) {
-    return this.embroidery.listMachines(this.orgId(user), branchId);
+    return this.embroidery.listMachines(
+      this.orgId(user),
+      this.optionalUuidQuery(branchId, "branchId"),
+    );
   }
 
   @Post("machines")
@@ -95,7 +126,7 @@ export class EmbroideryController {
   ) {
     return this.embroidery.updateMachine(
       this.orgId(user),
-      id,
+      this.requireUuidParam(id, "machine id"),
       updateEmbroideryMachineSchema.parse(body),
     );
   }
@@ -103,7 +134,7 @@ export class EmbroideryController {
   @Delete("machines/:id")
   @RequirePermissions("embroidery.manage", "*")
   deleteMachine(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string) {
-    return this.embroidery.deleteMachine(this.orgId(user), id);
+    return this.embroidery.deleteMachine(this.orgId(user), this.requireUuidParam(id, "machine id"));
   }
 
   @Get("orders")
@@ -115,9 +146,9 @@ export class EmbroideryController {
     @Query("customerId") customerId?: string,
   ) {
     return this.embroidery.listCustomerOrders(this.orgId(user), {
-      branchId,
+      branchId: this.optionalUuidQuery(branchId, "branchId"),
       status,
-      customerId,
+      customerId: this.optionalUuidQuery(customerId, "customerId"),
     });
   }
 
@@ -139,7 +170,7 @@ export class EmbroideryController {
   ) {
     return this.embroidery.updateCustomerOrder(
       this.orgId(user),
-      id,
+      this.requireUuidParam(id, "order id"),
       updateEmbroideryCustomerOrderSchema.parse(body),
     );
   }
@@ -151,19 +182,23 @@ export class EmbroideryController {
     @Query("branchId") branchId?: string,
     @Query("stage") stage?: string,
   ) {
-    return this.embroidery.listJobs(this.orgId(user), branchId, stage);
+    return this.embroidery.listJobs(
+      this.orgId(user),
+      this.optionalUuidQuery(branchId, "branchId"),
+      stage,
+    );
   }
 
   @Get("jobs/:id/costing")
   @RequirePermissions("embroidery.read", "embroidery.manage", "embroidery.production", "*")
   getJobCosting(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string) {
-    return this.embroidery.getJobCosting(this.orgId(user), id);
+    return this.embroidery.getJobCosting(this.orgId(user), this.requireUuidParam(id, "job id"));
   }
 
   @Get("jobs/:id")
   @RequirePermissions("embroidery.read", "embroidery.manage", "embroidery.production", "*")
   getJob(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string) {
-    return this.embroidery.getJob(this.orgId(user), id);
+    return this.embroidery.getJob(this.orgId(user), this.requireUuidParam(id, "job id"));
   }
 
   @Post("jobs")
@@ -179,19 +214,26 @@ export class EmbroideryController {
     @Param("id") id: string,
     @Body() body: unknown,
   ) {
-    return this.embroidery.updateJob(this.orgId(user), id, updateEmbroideryJobSchema.parse(body));
+    return this.embroidery.updateJob(
+      this.orgId(user),
+      this.requireUuidParam(id, "job id"),
+      updateEmbroideryJobSchema.parse(body),
+    );
   }
 
   @Delete("jobs/:id")
   @RequirePermissions("embroidery.manage", "*")
   deleteJob(@CurrentUser() user: AccessJwtPayload, @Param("id") id: string) {
-    return this.embroidery.deleteJob(this.orgId(user), id);
+    return this.embroidery.deleteJob(this.orgId(user), this.requireUuidParam(id, "job id"));
   }
 
   @Get("production-board")
   @RequirePermissions("embroidery.read", "embroidery.production", "embroidery.manage", "*")
   productionBoard(@CurrentUser() user: AccessJwtPayload, @Query("branchId") branchId?: string) {
-    return this.embroidery.productionBoard(this.orgId(user), branchId);
+    return this.embroidery.productionBoard(
+      this.orgId(user),
+      this.optionalUuidQuery(branchId, "branchId"),
+    );
   }
 
   @Get("production-logs")
@@ -201,7 +243,11 @@ export class EmbroideryController {
     @Query("jobId") jobId?: string,
     @Query("machineId") machineId?: string,
   ) {
-    return this.embroidery.listProductionLogs(this.orgId(user), jobId, machineId);
+    return this.embroidery.listProductionLogs(
+      this.orgId(user),
+      this.optionalUuidQuery(jobId, "jobId"),
+      this.optionalUuidQuery(machineId, "machineId"),
+    );
   }
 
   @Post("production-logs")
@@ -216,7 +262,10 @@ export class EmbroideryController {
   @Get("materials")
   @RequirePermissions("embroidery.read", "embroidery.manage", "*")
   listMaterials(@CurrentUser() user: AccessJwtPayload, @Query("jobId") jobId?: string) {
-    return this.embroidery.listMaterialIssues(this.orgId(user), jobId);
+    return this.embroidery.listMaterialIssues(
+      this.orgId(user),
+      this.optionalUuidQuery(jobId, "jobId"),
+    );
   }
 
   @Post("materials")
@@ -231,7 +280,7 @@ export class EmbroideryController {
   @Get("qc")
   @RequirePermissions("embroidery.read", "embroidery.qc", "embroidery.manage", "*")
   listQc(@CurrentUser() user: AccessJwtPayload, @Query("jobId") jobId?: string) {
-    return this.embroidery.listQc(this.orgId(user), jobId);
+    return this.embroidery.listQc(this.orgId(user), this.optionalUuidQuery(jobId, "jobId"));
   }
 
   @Post("qc")
@@ -246,7 +295,10 @@ export class EmbroideryController {
   @Get("deliveries")
   @RequirePermissions("embroidery.read", "embroidery.delivery", "embroidery.manage", "*")
   listDeliveries(@CurrentUser() user: AccessJwtPayload, @Query("jobId") jobId?: string) {
-    return this.embroidery.listDeliveries(this.orgId(user), jobId);
+    return this.embroidery.listDeliveries(
+      this.orgId(user),
+      this.optionalUuidQuery(jobId, "jobId"),
+    );
   }
 
   @Post("deliveries")
@@ -261,8 +313,16 @@ export class EmbroideryController {
 
   @Get("piece-rates")
   @RequirePermissions("embroidery.read", "embroidery.production", "embroidery.manage", "*")
-  listPieceRates(@CurrentUser() user: AccessJwtPayload, @Query("jobId") jobId?: string) {
-    return this.embroidery.listPieceRates(this.orgId(user), jobId);
+  listPieceRates(
+    @CurrentUser() user: AccessJwtPayload,
+    @Query("jobId") jobId?: string,
+    @Query("branchId") branchId?: string,
+  ) {
+    return this.embroidery.listPieceRates(
+      this.orgId(user),
+      this.optionalUuidQuery(jobId, "jobId"),
+      this.optionalUuidQuery(branchId, "branchId"),
+    );
   }
 
   @Post("piece-rates")
@@ -277,6 +337,9 @@ export class EmbroideryController {
   @Get("reports/summary")
   @RequirePermissions("embroidery.read", "embroidery.manage", "*")
   reportsSummary(@CurrentUser() user: AccessJwtPayload, @Query("branchId") branchId?: string) {
-    return this.embroidery.reportsSummary(this.orgId(user), branchId);
+    return this.embroidery.reportsSummary(
+      this.orgId(user),
+      this.optionalUuidQuery(branchId, "branchId"),
+    );
   }
 }

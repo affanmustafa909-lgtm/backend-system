@@ -1,0 +1,351 @@
+{
+  "api": "http://127.0.0.1:3000",
+  "email": "admin.embroidery@factory.demo",
+  "branchId": "bd1717c4-a37b-455f-9618-aced713d1b2e",
+  "pass": 68,
+  "fail": 0,
+  "total": 68,
+  "ts": "2026-11-21T08:22:50.886Z",
+  "results": [
+    {
+      "name": "health",
+      "ok": true,
+      "detail": "\"ok\""
+    },
+    {
+      "name": "auth.login",
+      "ok": true,
+      "detail": "admin.embroidery@factory.demo"
+    },
+    {
+      "name": "branches.list",
+      "ok": true,
+      "detail": "branchId=bd1717c4-a37b-455f-9618-aced713d1b2e code=EMB-HQ"
+    },
+    {
+      "name": "factory.parties",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "factory.operators",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "factory.inward",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "factory.outward",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "factory.dailySheets",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "factory.jobBills",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "factory.ledger",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "factory.advances",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "factory.mis",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "factory.printers",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "factory.printJobs",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "factory.packing",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "factory.items",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "emb.designs",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "emb.designs.listPayload",
+      "ok": true,
+      "detail": "hasPreview=false previewLen=0"
+    },
+    {
+      "name": "emb.machines",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "emb.orders",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "emb.jobs",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "emb.productionBoard",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "emb.productionLogs",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "emb.materials",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "emb.qc",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "emb.deliveries",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "emb.pieceRates",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "emb.reports",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "emb.pieceRates.branchFilter",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "emb.jobs.invalidBranchUuid",
+      "ok": true,
+      "detail": "400 ok"
+    },
+    {
+      "name": "extra.list.purchase-orders",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "extra.list.purchase-receipts",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "extra.list.defect-returns",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "extra.list.handwork-issue",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "extra.list.handwork-return",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "extra.list.attendance",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "extra.list.leave",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "extra.list.thread-consumption",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "extra.list.stitch-rates",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "extra.list.job-out",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "extra.list.expenses",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "extra.list.maintenance-logs",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "extra.list.salary-slips",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "extra.list.eway-records",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "extra.list.brokers",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "factory.parties.create",
+      "ok": true,
+      "detail": "201"
+    },
+    {
+      "name": "factory.operators.create",
+      "ok": true,
+      "detail": "201"
+    },
+    {
+      "name": "factory.items.create",
+      "ok": true,
+      "detail": "201"
+    },
+    {
+      "name": "emb.designs.create",
+      "ok": true,
+      "detail": "201"
+    },
+    {
+      "name": "emb.machines.create",
+      "ok": true,
+      "detail": "201"
+    },
+    {
+      "name": "emb.jobs.create",
+      "ok": true,
+      "detail": "201"
+    },
+    {
+      "name": "emb.jobs.create.mapFields",
+      "ok": true,
+      "detail": "priority=normal factoryOperatorId=22366aa5-3c6c-4a9c-b7ac-ab31310bf353"
+    },
+    {
+      "name": "emb.jobs.patch",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "emb.jobs.patch.fields",
+      "ok": true,
+      "detail": "priority=rush"
+    },
+    {
+      "name": "extra.create.purchase-orders",
+      "ok": true,
+      "detail": "201"
+    },
+    {
+      "name": "extra.create.expenses",
+      "ok": true,
+      "detail": "201"
+    },
+    {
+      "name": "extra.create.stitch-rates",
+      "ok": true,
+      "detail": "201"
+    },
+    {
+      "name": "extra.create.brokers",
+      "ok": true,
+      "detail": "201"
+    },
+    {
+      "name": "extra.create.attendance",
+      "ok": true,
+      "detail": "201"
+    },
+    {
+      "name": "extra.create.salary-slips",
+      "ok": true,
+      "detail": "201"
+    },
+    {
+      "name": "extra.create.thread-consumption",
+      "ok": true,
+      "detail": "201"
+    },
+    {
+      "name": "factory.aiAnalyze",
+      "ok": true,
+      "detail": "201"
+    },
+    {
+      "name": "extra.relist.purchase-orders",
+      "ok": true,
+      "detail": "rows=3"
+    },
+    {
+      "name": "extra.relist.expenses",
+      "ok": true,
+      "detail": "rows=3"
+    },
+    {
+      "name": "extra.relist.stitch-rates",
+      "ok": true,
+      "detail": "rows=3"
+    },
+    {
+      "name": "extra.relist.brokers",
+      "ok": true,
+      "detail": "rows=3"
+    },
+    {
+      "name": "extra.relist.attendance",
+      "ok": true,
+      "detail": "rows=3"
+    },
+    {
+      "name": "isolation.accountingBlocked",
+      "ok": true,
+      "detail": "404"
+    }
+  ]
+}

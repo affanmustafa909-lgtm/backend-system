@@ -12,7 +12,9 @@ import {
   createFactoryPartySchema,
   createFactoryPrintJobSchema,
   createFactoryPrinterProfileSchema,
+  createFactoryExtraRecordSchema,
   factoryDesignAiAnalyzeSchema,
+  factoryExtraModuleKindSchema,
   factoryStockTxnSchema,
   type CreateFactoryDailySheet,
   type CreateFactoryInwardChallan,
@@ -26,7 +28,9 @@ import {
   type CreateFactoryParty,
   type CreateFactoryPrintJob,
   type CreateFactoryPrinterProfile,
+  type CreateFactoryExtraRecord,
   type FactoryDesignAiAnalyze,
+  type FactoryExtraModuleKind,
   type FactoryStockTxn,
 } from "@platform/contracts";
 import {
@@ -47,9 +51,25 @@ import {
   factoryPrinterProfiles,
   factoryStockBalances,
   factoryStockLedger,
+  factoryAttendance,
+  factoryBrokerMasters,
+  factoryDefectReturns,
+  factoryEwayRecords,
+  factoryExpenses,
+  factoryHandworkIssues,
+  factoryHandworkReturns,
+  factoryJobOut,
+  factoryLeave,
+  factoryMaintenanceLogs,
+  factoryPurchaseOrders,
+  factoryPurchaseReceipts,
+  factorySalarySlips,
+  factoryStitchRates,
+  factoryThreadConsumption,
   type PlatformPgDb,
 } from "@platform/database-pg";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { z } from "zod";
 import { DRIZZLE } from "../drizzle/drizzle.tokens";
 
 function iso(d: Date | string | null | undefined): string | null {
@@ -72,20 +92,10 @@ export class FactoryService {
   private async nextSeq(
     organizationId: string,
     prefix: string,
-    table:
-      | typeof factoryParties
-      | typeof factoryItems
-      | typeof factoryInwardChallans
-      | typeof factoryOutwardChallans
-      | typeof factoryOperators
-      | typeof factoryJobBills,
-    codeColumn:
-      | typeof factoryParties.code
-      | typeof factoryItems.sku
-      | typeof factoryInwardChallans.cnNumber
-      | typeof factoryOutwardChallans.cnNumber
-      | typeof factoryOperators.code
-      | typeof factoryJobBills.billNumber,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    table: any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    codeColumn: any,
   ): Promise<string> {
     const pattern = `${prefix}-%`;
     const [row] = await this.db
@@ -96,6 +106,61 @@ export class FactoryService {
       .where(and(eq(table.organizationId, organizationId), sql`${codeColumn} like ${pattern}`));
     const seq = Number(row?.maxSeq ?? 0) + 1;
     return `${prefix}-${String(seq).padStart(4, "0")}`;
+  }
+
+  /** Stable human-readable refs for extra modules (avoid nextSeq on free-text columns). */
+  private extraDocRef(prefix: string): string {
+    return `${prefix}-${Date.now().toString(36).toUpperCase()}`;
+  }
+
+  private async postFactoryStockDeltaInTx(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tx: any,
+    organizationId: string,
+    branchId: string,
+    itemId: string,
+    qtyDelta: number,
+    refType: string,
+    refId: string,
+    notes?: string | null,
+  ) {
+    const [item] = await tx
+      .select()
+      .from(factoryItems)
+      .where(and(eq(factoryItems.id, itemId), eq(factoryItems.organizationId, organizationId)))
+      .limit(1);
+    if (!item) throw new NotFoundException("Item not found");
+    if (item.branchId !== branchId) throw new BadRequestException("Item branch mismatch");
+
+    await tx.insert(factoryStockLedger).values({
+      organizationId,
+      branchId,
+      itemId,
+      txnType: "issue",
+      qtyDelta: String(qtyDelta),
+      refType,
+      refId,
+      notes: notes ?? null,
+    });
+    await tx
+      .insert(factoryStockBalances)
+      .values({
+        organizationId,
+        branchId,
+        itemId,
+        qtyOnHand: String(qtyDelta),
+      })
+      .onConflictDoUpdate({
+        target: [
+          factoryStockBalances.organizationId,
+          factoryStockBalances.branchId,
+          factoryStockBalances.itemId,
+        ],
+        set: {
+          qtyOnHand: sql`${factoryStockBalances.qtyOnHand} + ${String(qtyDelta)}`,
+          updatedAt: new Date(),
+        },
+      });
   }
 
   // ── Parties ────────────────────────────────────────────
@@ -1054,6 +1119,510 @@ export class FactoryService {
     } catch {
       return { analysis: heuristic, message: "AI call failed — heuristic used." };
     }
+  }
+
+  // ── Extra factory modules ───────────────────────────────
+
+  async listExtra(organizationId: string, kind: FactoryExtraModuleKind, branchId?: string) {
+    factoryExtraModuleKindSchema.parse(kind);
+    switch (kind) {
+      case "purchase-orders":
+        return this.listExtraFrom(factoryPurchaseOrders, organizationId, branchId);
+      case "purchase-receipts":
+        return this.listExtraFrom(factoryPurchaseReceipts, organizationId, branchId);
+      case "defect-returns":
+        return this.listExtraFrom(factoryDefectReturns, organizationId, branchId);
+      case "handwork-issue":
+        return this.listExtraFrom(factoryHandworkIssues, organizationId, branchId);
+      case "handwork-return":
+        return this.listExtraFrom(factoryHandworkReturns, organizationId, branchId);
+      case "attendance":
+        return this.listExtraFrom(factoryAttendance, organizationId, branchId);
+      case "leave":
+        return this.listExtraFrom(factoryLeave, organizationId, branchId);
+      case "thread-consumption":
+        return this.listExtraFrom(factoryThreadConsumption, organizationId, branchId);
+      case "stitch-rates":
+        return this.listExtraFrom(factoryStitchRates, organizationId, branchId);
+      case "job-out":
+        return this.listExtraFrom(factoryJobOut, organizationId, branchId);
+      case "expenses":
+        return this.listExtraFrom(factoryExpenses, organizationId, branchId);
+      case "maintenance-logs":
+        return this.listExtraFrom(factoryMaintenanceLogs, organizationId, branchId);
+      case "salary-slips":
+        return this.listExtraFrom(factorySalarySlips, organizationId, branchId);
+      case "eway-records":
+        return this.listExtraFrom(factoryEwayRecords, organizationId, branchId);
+      case "brokers":
+        return this.listExtraFrom(factoryBrokerMasters, organizationId, branchId);
+      default: {
+        const _exhaustive: never = kind;
+        throw new BadRequestException(`Unknown extra module: ${_exhaustive}`);
+      }
+    }
+  }
+
+  async createExtra(organizationId: string, kind: FactoryExtraModuleKind, input: CreateFactoryExtraRecord) {
+    factoryExtraModuleKindSchema.parse(kind);
+    const body = createFactoryExtraRecordSchema.parse(input);
+    const p = body.payload ?? {};
+    const branchId = this.extraBranchId(body.branchId, p, kind);
+    const detailsJson =
+      typeof p.detailsJson === "string"
+        ? p.detailsJson
+        : p.detailsJson && typeof p.detailsJson === "object"
+          ? JSON.stringify(p.detailsJson)
+          : null;
+
+    switch (kind) {
+      case "purchase-orders": {
+        const poNumber =
+          this.extraStr(p, "poNumber") ||
+          (await this.nextSeq(organizationId, "PO", factoryPurchaseOrders, factoryPurchaseOrders.poNumber));
+        const [row] = await this.db
+          .insert(factoryPurchaseOrders)
+          .values({
+            organizationId,
+            branchId: branchId!,
+            poNumber,
+            vendorPartyId: this.extraUuid(p, "vendorPartyId"),
+            poDate: this.extraStr(p, "poDate") ?? todayDateText(),
+            status: this.extraStr(p, "status") ?? "open",
+            expectedDate: this.extraStr(p, "expectedDate"),
+            amountPkr: this.extraInt(p, "amountPkr", 0),
+            notes: this.extraStr(p, "notes"),
+            detailsJson,
+          })
+          .returning();
+        if (!row) throw new BadRequestException("Failed to create record");
+        return this.mapExtraDto(row);
+      }
+      case "purchase-receipts": {
+        const receiptNumber =
+          this.extraStr(p, "receiptNumber") ||
+          (await this.nextSeq(
+            organizationId,
+            "PR",
+            factoryPurchaseReceipts,
+            factoryPurchaseReceipts.receiptNumber,
+          ));
+        const [row] = await this.db
+          .insert(factoryPurchaseReceipts)
+          .values({
+            organizationId,
+            branchId: branchId!,
+            receiptNumber,
+            vendorPartyId: this.extraUuid(p, "vendorPartyId"),
+            poId: this.extraUuid(p, "poId"),
+            receiptDate: this.extraStr(p, "receiptDate") ?? todayDateText(),
+            status: this.extraStr(p, "status") ?? "received",
+            notes: this.extraStr(p, "notes"),
+            detailsJson,
+          })
+          .returning();
+        if (!row) throw new BadRequestException("Failed to create record");
+        return this.mapExtraDto(row);
+      }
+      case "defect-returns": {
+        const returnNumber =
+          this.extraStr(p, "returnNumber") ||
+          (await this.nextSeq(organizationId, "DR", factoryDefectReturns, factoryDefectReturns.returnNumber));
+        const [row] = await this.db
+          .insert(factoryDefectReturns)
+          .values({
+            organizationId,
+            branchId: branchId!,
+            returnNumber,
+            claimSide: this.extraStr(p, "claimSide") ?? "party",
+            partyId: this.extraUuid(p, "partyId"),
+            operatorId: this.extraUuid(p, "operatorId"),
+            jobId: this.extraUuid(p, "jobId"),
+            returnDate: this.extraStr(p, "returnDate") ?? todayDateText(),
+            qty: this.extraInt(p, "qty", 1),
+            defectCode: this.extraStr(p, "defectCode"),
+            amountPkr: this.extraInt(p, "amountPkr", 0),
+            status: this.extraStr(p, "status") ?? "open",
+            notes: this.extraStr(p, "notes"),
+            detailsJson,
+          })
+          .returning();
+        if (!row) throw new BadRequestException("Failed to create record");
+        return this.mapExtraDto(row);
+      }
+      case "handwork-issue": {
+        const issueNumber =
+          this.extraStr(p, "issueNumber") ||
+          (await this.nextSeq(organizationId, "HW", factoryHandworkIssues, factoryHandworkIssues.issueNumber));
+        const [row] = await this.db
+          .insert(factoryHandworkIssues)
+          .values({
+            organizationId,
+            branchId: branchId!,
+            issueNumber,
+            karigarPartyId: this.extraUuid(p, "karigarPartyId"),
+            jobId: this.extraUuid(p, "jobId"),
+            designId: this.extraUuid(p, "designId"),
+            issueDate: this.extraStr(p, "issueDate") ?? todayDateText(),
+            dueDate: this.extraStr(p, "dueDate"),
+            qty: this.extraInt(p, "qty", 1),
+            ratePkr: this.extraInt(p, "ratePkr", 0),
+            status: this.extraStr(p, "status") ?? "issued",
+            notes: this.extraStr(p, "notes"),
+            detailsJson,
+          })
+          .returning();
+        if (!row) throw new BadRequestException("Failed to create record");
+        return this.mapExtraDto(row);
+      }
+      case "handwork-return": {
+        const returnNumber =
+          this.extraStr(p, "returnNumber") ||
+          (await this.nextSeq(
+            organizationId,
+            "HR",
+            factoryHandworkReturns,
+            factoryHandworkReturns.returnNumber,
+          ));
+        const [row] = await this.db
+          .insert(factoryHandworkReturns)
+          .values({
+            organizationId,
+            branchId: branchId!,
+            returnNumber,
+            issueId: this.extraUuid(p, "issueId"),
+            returnDate: this.extraStr(p, "returnDate") ?? todayDateText(),
+            qty: this.extraInt(p, "qty", 1),
+            lossQty: this.extraInt(p, "lossQty", 0),
+            status: this.extraStr(p, "status") ?? "received",
+            notes: this.extraStr(p, "notes"),
+            detailsJson,
+          })
+          .returning();
+        if (!row) throw new BadRequestException("Failed to create record");
+        return this.mapExtraDto(row);
+      }
+      case "attendance": {
+        const operatorId = this.extraUuid(p, "operatorId");
+        if (!operatorId) throw new BadRequestException("payload.operatorId is required");
+        const [row] = await this.db
+          .insert(factoryAttendance)
+          .values({
+            organizationId,
+            branchId: branchId!,
+            operatorId,
+            attendDate: this.extraStr(p, "attendDate") ?? todayDateText(),
+            shift: this.extraStr(p, "shift") ?? "day",
+            status: this.extraStr(p, "status") ?? "present",
+            hours: String(this.extraNum(p, "hours", 8)),
+            notes: this.extraStr(p, "notes"),
+          })
+          .returning();
+        if (!row) throw new BadRequestException("Failed to create record");
+        return this.mapExtraDto(row);
+      }
+      case "leave": {
+        const operatorId = this.extraUuid(p, "operatorId");
+        if (!operatorId) throw new BadRequestException("payload.operatorId is required");
+        const fromDate = this.extraStr(p, "fromDate") ?? todayDateText();
+        const [row] = await this.db
+          .insert(factoryLeave)
+          .values({
+            organizationId,
+            branchId: branchId!,
+            operatorId,
+            fromDate,
+            toDate: this.extraStr(p, "toDate") ?? fromDate,
+            leaveType: this.extraStr(p, "leaveType") ?? "casual",
+            status: this.extraStr(p, "status") ?? "approved",
+            notes: this.extraStr(p, "notes"),
+          })
+          .returning();
+        if (!row) throw new BadRequestException("Failed to create record");
+        return this.mapExtraDto(row);
+      }
+      case "thread-consumption": {
+        const itemId = this.extraUuid(p, "itemId");
+        const qty = this.extraNum(p, "qty", 0);
+        const row = await this.db.transaction(async (tx) => {
+          const [inserted] = await tx
+            .insert(factoryThreadConsumption)
+            .values({
+              organizationId,
+              branchId: branchId!,
+              entryDate: this.extraStr(p, "entryDate") ?? todayDateText(),
+              designId: this.extraUuid(p, "designId"),
+              jobId: this.extraUuid(p, "jobId"),
+              itemId: itemId ?? null,
+              qty: String(qty),
+              unit: this.extraStr(p, "unit") ?? "cone",
+              notes: this.extraStr(p, "notes"),
+            })
+            .returning();
+          if (!inserted) throw new BadRequestException("Failed to create record");
+          if (itemId && qty > 0) {
+            await this.postFactoryStockDeltaInTx(
+              tx,
+              organizationId,
+              branchId!,
+              itemId,
+              -qty,
+              "thread_consumption",
+              inserted.id,
+              this.extraStr(p, "notes"),
+            );
+          }
+          return inserted;
+        });
+        return this.mapExtraDto(row);
+      }
+      case "stitch-rates": {
+        const name = this.extraStr(p, "name");
+        if (!name) throw new BadRequestException("payload.name is required");
+        const code =
+          this.extraStr(p, "code") ||
+          (await this.nextSeq(organizationId, "STR", factoryStitchRates, factoryStitchRates.code));
+        const [row] = await this.db
+          .insert(factoryStitchRates)
+          .values({
+            organizationId,
+            branchId: branchId,
+            code,
+            name,
+            headArrangement: this.extraStr(p, "headArrangement") ?? "1-7-11-B",
+            workType: this.extraStr(p, "workType") ?? "flat",
+            ratePer1kPkr: this.extraInt(p, "ratePer1kPkr", 0),
+            notes: this.extraStr(p, "notes"),
+            active: this.extraStr(p, "active") ?? "yes",
+          })
+          .returning();
+        if (!row) throw new BadRequestException("Failed to create record");
+        return this.mapExtraDto(row);
+      }
+      case "job-out": {
+        const outNumber =
+          this.extraStr(p, "outNumber") ||
+          (await this.nextSeq(organizationId, "JO", factoryJobOut, factoryJobOut.outNumber));
+        const [row] = await this.db
+          .insert(factoryJobOut)
+          .values({
+            organizationId,
+            branchId: branchId!,
+            outNumber,
+            vendorPartyId: this.extraUuid(p, "vendorPartyId"),
+            jobId: this.extraUuid(p, "jobId"),
+            outDate: this.extraStr(p, "outDate") ?? todayDateText(),
+            dueDate: this.extraStr(p, "dueDate"),
+            qty: this.extraInt(p, "qty", 1),
+            processName: this.extraStr(p, "processName") ?? "embroidery",
+            status: this.extraStr(p, "status") ?? "out",
+            notes: this.extraStr(p, "notes"),
+            detailsJson,
+          })
+          .returning();
+        if (!row) throw new BadRequestException("Failed to create record");
+        return this.mapExtraDto(row);
+      }
+      case "expenses": {
+        const narration =
+          this.extraStr(p, "narration") ??
+          this.extraStr(p, "expenseRef") ??
+          this.extraDocRef("EX");
+        const [row] = await this.db
+          .insert(factoryExpenses)
+          .values({
+            organizationId,
+            branchId: branchId!,
+            expenseDate: this.extraStr(p, "expenseDate") ?? todayDateText(),
+            category: this.extraStr(p, "category") ?? "general",
+            amountPkr: this.extraInt(p, "amountPkr", 0),
+            payMode: this.extraStr(p, "payMode") ?? "cash",
+            vendorName: this.extraStr(p, "vendorName"),
+            narration,
+            status: this.extraStr(p, "status") ?? "posted",
+          })
+          .returning();
+        if (!row) throw new BadRequestException("Failed to create record");
+        return this.mapExtraDto(row);
+      }
+      case "maintenance-logs": {
+        const notes =
+          this.extraStr(p, "notes") ?? this.extraStr(p, "logRef") ?? this.extraDocRef("ML");
+        const [row] = await this.db
+          .insert(factoryMaintenanceLogs)
+          .values({
+            organizationId,
+            branchId: branchId!,
+            machineId: this.extraUuid(p, "machineId"),
+            serviceDate: this.extraStr(p, "serviceDate") ?? todayDateText(),
+            serviceType: this.extraStr(p, "serviceType") ?? "preventive",
+            costPkr: this.extraInt(p, "costPkr", 0),
+            nextDueDate: this.extraStr(p, "nextDueDate"),
+            notes,
+            status: this.extraStr(p, "status") ?? "done",
+          })
+          .returning();
+        if (!row) throw new BadRequestException("Failed to create record");
+        return this.mapExtraDto(row);
+      }
+      case "salary-slips": {
+        const operatorId = this.extraUuid(p, "operatorId");
+        if (!operatorId) throw new BadRequestException("payload.operatorId is required");
+        const d = new Date();
+        const periodMonth =
+          this.extraStr(p, "periodMonth") ?? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        const notes =
+          this.extraStr(p, "notes") ?? this.extraStr(p, "slipRef") ?? this.extraDocRef("SS");
+        const [row] = await this.db
+          .insert(factorySalarySlips)
+          .values({
+            organizationId,
+            branchId: branchId!,
+            operatorId,
+            periodMonth,
+            grossPkr: this.extraInt(p, "grossPkr", 0),
+            advancesPkr: this.extraInt(p, "advancesPkr", 0),
+            bonusPkr: this.extraInt(p, "bonusPkr", 0),
+            cutsPkr: this.extraInt(p, "cutsPkr", 0),
+            netPkr: this.extraInt(p, "netPkr", 0),
+            status: this.extraStr(p, "status") ?? "draft",
+            notes,
+          })
+          .returning();
+        if (!row) throw new BadRequestException("Failed to create record");
+        return this.mapExtraDto(row);
+      }
+      case "eway-records": {
+        const ewayNumber =
+          this.extraStr(p, "ewayNumber") ||
+          (await this.nextSeq(organizationId, "EW", factoryEwayRecords, factoryEwayRecords.ewayNumber));
+        const [row] = await this.db
+          .insert(factoryEwayRecords)
+          .values({
+            organizationId,
+            branchId: branchId!,
+            ewayNumber,
+            docType: this.extraStr(p, "docType") ?? "outward_cn",
+            docRef: this.extraStr(p, "docRef"),
+            partyId: this.extraUuid(p, "partyId"),
+            ewayDate: this.extraStr(p, "ewayDate") ?? todayDateText(),
+            vehicle: this.extraStr(p, "vehicle"),
+            amountPkr: this.extraInt(p, "amountPkr", 0),
+            status: this.extraStr(p, "status") ?? "active",
+            notes: this.extraStr(p, "notes"),
+          })
+          .returning();
+        if (!row) throw new BadRequestException("Failed to create record");
+        return this.mapExtraDto(row);
+      }
+      case "brokers": {
+        const name = this.extraStr(p, "name");
+        if (!name) throw new BadRequestException("payload.name is required");
+        const code =
+          this.extraStr(p, "code") ||
+          (await this.nextSeq(organizationId, "BR", factoryBrokerMasters, factoryBrokerMasters.code));
+        const [row] = await this.db
+          .insert(factoryBrokerMasters)
+          .values({
+            organizationId,
+            branchId: branchId,
+            code,
+            name,
+            phone: this.extraStr(p, "phone"),
+            commissionPct: String(this.extraNum(p, "commissionPct", 0)),
+            notes: this.extraStr(p, "notes"),
+            active: this.extraStr(p, "active") ?? "yes",
+          })
+          .returning();
+        if (!row) throw new BadRequestException("Failed to create record");
+        return this.mapExtraDto(row);
+      }
+      default: {
+        const _exhaustive: never = kind;
+        throw new BadRequestException(`Unknown extra module: ${_exhaustive}`);
+      }
+    }
+  }
+
+  private async listExtraFrom(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    table: any,
+    organizationId: string,
+    branchId?: string,
+  ) {
+    const conds = [eq(table.organizationId, organizationId)];
+    if (branchId) conds.push(eq(table.branchId, branchId));
+    const rows = await this.db
+      .select()
+      .from(table)
+      .where(and(...conds))
+      .orderBy(desc(table.createdAt));
+    return rows.map((r) => this.mapExtraDto(r as Record<string, unknown>));
+  }
+
+  private extraBranchId(
+    bodyBranchId: string | null | undefined,
+    p: Record<string, unknown>,
+    kind: FactoryExtraModuleKind,
+  ): string | null {
+    const fromPayload = this.extraUuid(p, "branchId");
+    const id = bodyBranchId ?? fromPayload ?? null;
+    const optionalBranch = kind === "stitch-rates" || kind === "brokers";
+    if (!id && !optionalBranch) {
+      throw new BadRequestException("branchId is required (body or payload)");
+    }
+    return id;
+  }
+
+  private extraStr(p: Record<string, unknown>, key: string): string | null | undefined {
+    const v = p[key];
+    if (v === null || v === undefined) return null;
+    if (typeof v === "string") {
+      const t = v.trim();
+      return t.length ? t : null;
+    }
+    return String(v);
+  }
+
+  private extraUuid(p: Record<string, unknown>, key: string): string | null {
+    const v = p[key];
+    if (v === null || v === undefined) return null;
+    if (typeof v !== "string") {
+      throw new BadRequestException(`payload.${key} must be a UUID string`);
+    }
+    const t = v.trim();
+    if (!t.length) return null;
+    const parsed = z.string().uuid().safeParse(t);
+    if (!parsed.success) {
+      throw new BadRequestException(`payload.${key} must be a valid UUID`);
+    }
+    return parsed.data;
+  }
+
+  private extraInt(p: Record<string, unknown>, key: string, def: number): number {
+    const v = p[key];
+    if (typeof v === "number" && Number.isFinite(v)) return Math.trunc(v);
+    if (typeof v === "string" && /^-?\d+$/.test(v.trim())) return parseInt(v, 10);
+    return def;
+  }
+
+  private extraNum(p: Record<string, unknown>, key: string, def: number): number {
+    const v = p[key];
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v.trim())) return parseFloat(v);
+    return def;
+  }
+
+  private mapExtraDto(row: Record<string, unknown>) {
+    const dto: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(row)) {
+      if (v instanceof Date) dto[k] = iso(v);
+      else if (k === "createdAt" || k === "updatedAt") dto[k] = iso(v as Date | string | null | undefined);
+      else if (typeof v === "string" && (k === "hours" || k === "qty" || k === "commissionPct" || k === "weightKg"))
+        dto[k] = Number(v);
+      else dto[k] = v;
+    }
+    return dto;
   }
 
   // ── Mappers ────────────────────────────────────────────

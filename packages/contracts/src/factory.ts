@@ -436,3 +436,28 @@ export const factoryDesignAiAnalyzeSchema = z.object({
   hint: z.string().max(500).optional().nullable(),
 });
 export type FactoryDesignAiAnalyze = z.infer<typeof factoryDesignAiAnalyzeSchema>;
+
+export const factoryExtraModuleKindSchema = z.enum([
+  "purchase-orders",
+  "purchase-receipts",
+  "defect-returns",
+  "handwork-issue",
+  "handwork-return",
+  "attendance",
+  "leave",
+  "thread-consumption",
+  "stitch-rates",
+  "job-out",
+  "expenses",
+  "maintenance-logs",
+  "salary-slips",
+  "eway-records",
+  "brokers",
+]);
+export type FactoryExtraModuleKind = z.infer<typeof factoryExtraModuleKindSchema>;
+
+export const createFactoryExtraRecordSchema = z.object({
+  branchId: z.string().uuid().optional().nullable(),
+  payload: z.record(z.unknown()),
+});
+export type CreateFactoryExtraRecord = z.infer<typeof createFactoryExtraRecordSchema>;

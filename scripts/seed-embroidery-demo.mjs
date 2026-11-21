@@ -55,6 +55,8 @@ async function ensureEmbroideryTables(client) {
     "ensure_embroidery_tables.sql",
     "ensure_embroidery_design_file_columns.sql",
     "ensure_factory_tables.sql",
+    "ensure_factory_depth.sql",
+    "ensure_factory_extra_modules.sql",
   ]) {
     const path = join(sqlDir, file);
     if (!existsSync(path)) {

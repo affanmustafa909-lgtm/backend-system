@@ -73,7 +73,7 @@ export class EmbroideryService {
           : eq(embroideryDesigns.organizationId, organizationId),
       )
       .orderBy(desc(embroideryDesigns.createdAt));
-    return rows.map((r) => this.mapDesign(r));
+    return rows.map((r) => this.mapDesign(r, { includePreview: false }));
   }
 
   async createDesign(organizationId: string, input: CreateEmbroideryDesign) {
@@ -117,6 +117,10 @@ export class EmbroideryService {
       data.fileContentBase64 !== undefined
         ? data.fileContentBase64?.replace(/\s/g, "") || null
         : undefined;
+    const previewContent =
+      data.previewBase64 !== undefined
+        ? data.previewBase64?.replace(/\s/g, "") || null
+        : undefined;
     const [row] = await this.db
       .update(embroideryDesigns)
       .set({
@@ -129,6 +133,17 @@ export class EmbroideryService {
         ...(fileContent !== undefined ? { fileContentBase64: fileContent } : {}),
         ...(data.fileMimeType !== undefined ? { fileMimeType: data.fileMimeType } : {}),
         ...(data.notes !== undefined ? { notes: data.notes } : {}),
+        ...(data.widthMm !== undefined ? { widthMm: data.widthMm } : {}),
+        ...(data.heightMm !== undefined ? { heightMm: data.heightMm } : {}),
+        ...(data.hoop !== undefined ? { hoop: data.hoop } : {}),
+        ...(data.workType !== undefined ? { workType: data.workType } : {}),
+        ...(data.threadBrand !== undefined ? { threadBrand: data.threadBrand } : {}),
+        ...(data.ratePer1kPkr !== undefined ? { ratePer1kPkr: data.ratePer1kPkr } : {}),
+        ...(data.needleChartJson !== undefined ? { needleChartJson: data.needleChartJson } : {}),
+        ...(previewContent !== undefined ? { previewBase64: previewContent } : {}),
+        ...(data.previewMimeType !== undefined ? { previewMimeType: data.previewMimeType } : {}),
+        ...(data.aiAnalysisJson !== undefined ? { aiAnalysisJson: data.aiAnalysisJson } : {}),
+        ...(data.detailsJson !== undefined ? { detailsJson: data.detailsJson } : {}),
         updatedAt: new Date(),
       })
       .where(and(eq(embroideryDesigns.id, id), eq(embroideryDesigns.organizationId, organizationId)))
@@ -470,6 +485,11 @@ export class EmbroideryService {
         ...(data.invoiceAmountPkr !== undefined ? { invoiceAmountPkr: data.invoiceAmountPkr } : {}),
         ...(data.invoiceRef !== undefined ? { invoiceRef: data.invoiceRef } : {}),
         ...(data.notes !== undefined ? { notes: data.notes } : {}),
+        ...(data.inwardChallanId !== undefined ? { inwardChallanId: data.inwardChallanId } : {}),
+        ...(data.factoryOperatorId !== undefined ? { factoryOperatorId: data.factoryOperatorId } : {}),
+        ...(data.priority !== undefined ? { priority: data.priority } : {}),
+        ...(data.needleChartJson !== undefined ? { needleChartJson: data.needleChartJson } : {}),
+        ...(data.detailsJson !== undefined ? { detailsJson: data.detailsJson } : {}),
         updatedAt: new Date(),
       })
       .where(and(eq(embroideryJobs.id, id), eq(embroideryJobs.organizationId, organizationId)))
@@ -666,10 +686,6 @@ export class EmbroideryService {
 
   async createQc(organizationId: string, input: CreateEmbroideryQcRecord) {
     const data = createEmbroideryQcRecordSchema.parse(input);
-    const detailsJson =
-      typeof input === "object" && input !== null && "detailsJson" in input
-        ? ((input as { detailsJson?: string | null }).detailsJson ?? null)
-        : null;
     await this.assertJob(organizationId, data.jobId);
     const [row] = await this.db
       .insert(embroideryQcRecords)
@@ -683,7 +699,7 @@ export class EmbroideryService {
         notes: data.notes ?? null,
         claimSide: data.claimSide ?? "operator",
         disposition: data.disposition ?? "rework",
-        detailsJson,
+        detailsJson: data.detailsJson ?? null,
       })
       .returning();
     if (!row) throw new BadRequestException("Failed to create QC record");
@@ -774,9 +790,10 @@ export class EmbroideryService {
 
   // ── Piece rate ───────────────────────────────────────────
 
-  async listPieceRates(organizationId: string, jobId?: string) {
+  async listPieceRates(organizationId: string, jobId?: string, branchId?: string) {
     const conditions = [eq(embroideryPieceRateEntries.organizationId, organizationId)];
     if (jobId) conditions.push(eq(embroideryPieceRateEntries.jobId, jobId));
+    if (branchId) conditions.push(eq(embroideryPieceRateEntries.branchId, branchId));
     const rows = await this.db
       .select()
       .from(embroideryPieceRateEntries)
@@ -848,7 +865,7 @@ export class EmbroideryService {
   async reportsSummary(organizationId: string, branchId?: string) {
     const jobs = await this.listJobs(organizationId, branchId);
     const machines = await this.listMachines(organizationId, branchId);
-    const pieceRates = await this.listPieceRates(organizationId);
+    const pieceRates = await this.listPieceRates(organizationId, undefined, branchId);
     const openJobs = jobs.filter((j) => !["delivered", "cancelled", "ready"].includes(j.stage));
     const totalPieces = jobs.reduce(
       (sum, j) => sum + j.lines.reduce((s, l) => s + l.quantity, 0),
@@ -925,7 +942,11 @@ export class EmbroideryService {
       );
   }
 
-  private mapDesign(r: typeof embroideryDesigns.$inferSelect) {
+  private mapDesign(
+    r: typeof embroideryDesigns.$inferSelect,
+    options?: { includePreview?: boolean },
+  ) {
+    const includePreview = options?.includePreview ?? true;
     return {
       id: r.id,
       organizationId: r.organizationId,
@@ -937,6 +958,7 @@ export class EmbroideryService {
       colorways: r.colorways,
       fileName: r.fileName,
       hasFile: Boolean(r.fileContentBase64),
+      hasPreview: Boolean(r.previewBase64),
       fileMimeType: r.fileMimeType ?? null,
       notes: r.notes,
       widthMm: r.widthMm,
@@ -946,7 +968,7 @@ export class EmbroideryService {
       threadBrand: r.threadBrand,
       ratePer1kPkr: r.ratePer1kPkr,
       needleChartJson: r.needleChartJson,
-      previewBase64: r.previewBase64,
+      previewBase64: includePreview ? r.previewBase64 : null,
       previewMimeType: r.previewMimeType,
       aiAnalysisJson: r.aiAnalysisJson,
       detailsJson: r.detailsJson,
@@ -1109,6 +1131,11 @@ export class EmbroideryService {
       invoiceAmountPkr: r.invoiceAmountPkr,
       invoiceRef: r.invoiceRef,
       notes: r.notes,
+      inwardChallanId: r.inwardChallanId,
+      factoryOperatorId: r.factoryOperatorId,
+      priority: r.priority,
+      needleChartJson: r.needleChartJson,
+      detailsJson: r.detailsJson,
       createdAt: iso(r.createdAt)!,
       updatedAt: iso(r.updatedAt)!,
       lines: lines.map((l) => ({

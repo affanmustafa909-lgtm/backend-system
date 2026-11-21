@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { z } from "zod";
 import {
   createFactoryDailySheetSchema,
   createFactoryInwardChallanSchema,
@@ -12,7 +13,9 @@ import {
   createFactoryPartySchema,
   createFactoryPrintJobSchema,
   createFactoryPrinterProfileSchema,
+  createFactoryExtraRecordSchema,
   factoryDesignAiAnalyzeSchema,
+  factoryExtraModuleKindSchema,
   factoryStockTxnSchema,
 } from "@platform/contracts";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -53,8 +56,10 @@ export class FactoryController {
   @Get("items")
   @RequirePermissions("embroidery.read", "embroidery.manage", "*")
   listItems(@CurrentUser() user: AccessJwtPayload, @Query("branchId") branchId: string) {
-    if (!branchId) throw new BadRequestException("branchId query is required");
-    return this.factory.listItems(this.orgId(user), branchId);
+    if (!branchId?.trim()) throw new BadRequestException("branchId query is required");
+    const parsed = z.string().uuid().safeParse(branchId.trim());
+    if (!parsed.success) throw new BadRequestException("Invalid branchId");
+    return this.factory.listItems(this.orgId(user), parsed.data);
   }
 
   @Post("items")
@@ -200,8 +205,32 @@ export class FactoryController {
   }
 
   @Post("designs/ai-analyze")
-  @RequirePermissions("embroidery.manage", "embroidery.read", "*")
+  @RequirePermissions("embroidery.manage", "*")
   analyzeDesign(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
     return this.factory.analyzeDesignAi(this.orgId(user), factoryDesignAiAnalyzeSchema.parse(body));
+  }
+
+  @Get("extra/:kind")
+  @RequirePermissions("embroidery.read", "embroidery.manage", "*")
+  listExtra(
+    @CurrentUser() user: AccessJwtPayload,
+    @Param("kind") kind: string,
+    @Query("branchId") branchId?: string,
+  ) {
+    const parsed = factoryExtraModuleKindSchema.safeParse(kind);
+    if (!parsed.success) throw new BadRequestException("Invalid factory extra module kind");
+    return this.factory.listExtra(this.orgId(user), parsed.data, branchId);
+  }
+
+  @Post("extra/:kind")
+  @RequirePermissions("embroidery.manage", "*")
+  createExtra(
+    @CurrentUser() user: AccessJwtPayload,
+    @Param("kind") kind: string,
+    @Body() body: unknown,
+  ) {
+    const parsed = factoryExtraModuleKindSchema.safeParse(kind);
+    if (!parsed.success) throw new BadRequestException("Invalid factory extra module kind");
+    return this.factory.createExtra(this.orgId(user), parsed.data, createFactoryExtraRecordSchema.parse(body));
   }
 }
