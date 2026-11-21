@@ -21,6 +21,8 @@ export * from "./pharmacy";
 export * from "./pharmacy-erp";
 export * from "./store";
 export * from "./education";
+export * from "./embroidery";
+export * from "./factory";
 export * from "./security";
 export * from "./refresh-tokens";
 export * from "./tax-authority";

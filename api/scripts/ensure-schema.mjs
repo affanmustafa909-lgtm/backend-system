@@ -17,6 +17,15 @@ const EDUCATION_SCHEMA_FILES = [
   "education-schema-missing.sql",
 ];
 
+/** Embroidery production DDL (packages/database-pg/sql). */
+const EMBROIDERY_SCHEMA_FILES = [
+  "ensure_embroidery_tables.sql",
+  "ensure_embroidery_design_file_columns.sql",
+];
+
+/** Factory-native inventory / CN / daily / accounts DDL. */
+const FACTORY_SCHEMA_FILES = ["ensure_factory_tables.sql"];
+
 const STATEMENTS = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_set_password text`,
   `ALTER TABLE organization_memberships ADD COLUMN IF NOT EXISTS active boolean NOT NULL DEFAULT true`,
@@ -1681,6 +1690,34 @@ function loadEducationSchemaSql(appRoot) {
   return chunks;
 }
 
+function loadEmbroiderySchemaSql(appRoot) {
+  const sqlDir = join(appRoot, "packages", "database-pg", "sql");
+  const chunks = [];
+  for (const file of EMBROIDERY_SCHEMA_FILES) {
+    const path = join(sqlDir, file);
+    if (!existsSync(path)) {
+      console.warn(`[ensure-schema] embroidery SQL missing: ${path}`);
+      continue;
+    }
+    chunks.push(`-- ${file}\n${readFileSync(path, "utf8")}`);
+  }
+  return chunks;
+}
+
+function loadFactorySchemaSql(appRoot) {
+  const sqlDir = join(appRoot, "packages", "database-pg", "sql");
+  const chunks = [];
+  for (const file of FACTORY_SCHEMA_FILES) {
+    const path = join(sqlDir, file);
+    if (!existsSync(path)) {
+      console.warn(`[ensure-schema] factory SQL missing: ${path}`);
+      continue;
+    }
+    chunks.push(`-- ${file}\n${readFileSync(path, "utf8")}`);
+  }
+  return chunks;
+}
+
 export function ensureCriticalSchema() {
   const databaseUrl = process.env.DATABASE_URL?.trim();
   if (!databaseUrl) {
@@ -1693,11 +1730,15 @@ export function ensureCriticalSchema() {
   const appRoot = resolveWorkspaceRoot(apiRoot);
   const dbPkgRoot = join(appRoot, "packages", "database-pg");
   const educationSqlChunks = loadEducationSchemaSql(appRoot);
+  const embroiderySqlChunks = loadEmbroiderySchemaSql(appRoot);
+  const factorySqlChunks = loadFactorySchemaSql(appRoot);
 
   const runner = `
 const { Client } = require("pg");
 const statements = ${JSON.stringify(STATEMENTS)};
 const educationChunks = ${JSON.stringify(educationSqlChunks)};
+const embroideryChunks = ${JSON.stringify(embroiderySqlChunks)};
+const factoryChunks = ${JSON.stringify(factorySqlChunks)};
 function stripSsl(raw) {
   try {
     const url = new URL(raw);
@@ -1758,6 +1799,46 @@ function stripSsl(raw) {
         console.log("[ensure-schema] OK: education schema chunk", chunk.slice(0, 40).replace(/\\n/g, " "));
       } catch (err) {
         console.warn("[ensure-schema] education skip:", err && err.message ? err.message : err);
+      }
+    }
+  }
+
+  let embroideryPresent = false;
+  try {
+    const reg = await client.query("select to_regclass('public.embroidery_designs') as present");
+    embroideryPresent = Boolean(reg.rows[0] && reg.rows[0].present);
+  } catch {
+    embroideryPresent = false;
+  }
+  if (embroideryPresent) {
+    console.log("[ensure-schema] embroidery_designs present — skip embroidery SQL chunks");
+  } else {
+    for (const chunk of embroideryChunks) {
+      try {
+        await client.query(chunk);
+        console.log("[ensure-schema] OK: embroidery schema chunk", chunk.slice(0, 40).replace(/\\n/g, " "));
+      } catch (err) {
+        console.warn("[ensure-schema] embroidery skip:", err && err.message ? err.message : err);
+      }
+    }
+  }
+
+  let factoryPresent = false;
+  try {
+    const reg = await client.query("select to_regclass('public.factory_parties') as present");
+    factoryPresent = Boolean(reg.rows[0] && reg.rows[0].present);
+  } catch {
+    factoryPresent = false;
+  }
+  if (factoryPresent) {
+    console.log("[ensure-schema] factory_parties present — skip factory SQL chunks");
+  } else {
+    for (const chunk of factoryChunks) {
+      try {
+        await client.query(chunk);
+        console.log("[ensure-schema] OK: factory schema chunk", chunk.slice(0, 40).replace(/\\n/g, " "));
+      } catch (err) {
+        console.warn("[ensure-schema] factory skip:", err && err.message ? err.message : err);
       }
     }
   }

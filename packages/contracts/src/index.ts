@@ -20,6 +20,8 @@ export * from "./store-units";
 export * from "./store";
 export * from "./education";
 export * from "./mobizone";
+export * from "./embroidery";
+export * from "./factory";
 export * from "./security";
 export * from "./platform";
 export * from "./printing";

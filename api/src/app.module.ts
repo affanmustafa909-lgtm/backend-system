@@ -22,6 +22,7 @@ import { ClosingModule } from "./closing/closing.module";
 import { PharmacyModule } from "./pharmacy/pharmacy.module";
 import { StoreModule } from "./store/store.module";
 import { EducationModule } from "./education/education.module";
+import { EmbroideryModule } from "./embroidery/embroidery.module";
 import { SecurityModule } from "./security/security.module";
 import { TablesModule } from "./tables/tables.module";
 import { UsersModule } from "./users/users.module";
@@ -73,6 +74,7 @@ import { ReportsModule } from "./reports/reports.module";
     PharmacyModule,
     StoreModule,
     EducationModule,
+    EmbroideryModule,
     TaxAuthorityModule,
     PrintingModule,
     ReportsModule,

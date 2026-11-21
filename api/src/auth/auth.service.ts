@@ -184,6 +184,15 @@ export class AuthService implements OnModuleInit {
         branchName: "MobiZone HQ",
         city: "Islamabad",
       },
+      {
+        systemType: "embroidery",
+        name: "Embroidery Factory Demo",
+        adminEmail: "admin.embroidery@factory.demo",
+        adminName: "Embroidery Admin",
+        branchCode: "EMB-HQ",
+        branchName: "Factory Floor",
+        city: "Faisalabad",
+      },
     ];
 
     for (const biz of systemBusinesses) {
@@ -998,7 +1007,13 @@ export class AuthService implements OnModuleInit {
 
 function parseSystemType(value: string): SystemType {
   const parsed = systemTypeSchema.safeParse(value);
-  return parsed.success ? parsed.data : "restaurant";
+  if (parsed.success) return parsed.data;
+  // Pass through future slugs (e.g. embroidery) so JWT matches the org before
+  // every deploy updates SYSTEM_TYPES. Unknown garbage still falls back.
+  if (typeof value === "string" && /^[a-z][a-z0-9_]*$/.test(value)) {
+    return value as SystemType;
+  }
+  return "restaurant";
 }
 
 function normalizePermissions(value: unknown, role: string): string[] {
