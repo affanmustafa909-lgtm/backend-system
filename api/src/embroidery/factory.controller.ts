@@ -8,7 +8,11 @@ import {
   createFactoryOperatorAdvanceSchema,
   createFactoryOperatorSchema,
   createFactoryOutwardChallanSchema,
+  createFactoryPackingRecordSchema,
   createFactoryPartySchema,
+  createFactoryPrintJobSchema,
+  createFactoryPrinterProfileSchema,
+  factoryDesignAiAnalyzeSchema,
   factoryStockTxnSchema,
 } from "@platform/contracts";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -157,5 +161,47 @@ export class FactoryController {
   @RequirePermissions("embroidery.read", "embroidery.manage", "*")
   misSummary(@CurrentUser() user: AccessJwtPayload, @Query("branchId") branchId?: string) {
     return this.factory.misSummary(this.orgId(user), branchId);
+  }
+
+  @Get("printers")
+  @RequirePermissions("embroidery.read", "embroidery.manage", "*")
+  listPrinters(@CurrentUser() user: AccessJwtPayload, @Query("branchId") branchId?: string) {
+    return this.factory.listPrinters(this.orgId(user), branchId);
+  }
+
+  @Post("printers")
+  @RequirePermissions("embroidery.manage", "*")
+  createPrinter(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
+    return this.factory.createPrinter(this.orgId(user), createFactoryPrinterProfileSchema.parse(body));
+  }
+
+  @Get("print-jobs")
+  @RequirePermissions("embroidery.read", "embroidery.manage", "*")
+  listPrintJobs(@CurrentUser() user: AccessJwtPayload, @Query("branchId") branchId?: string) {
+    return this.factory.listPrintJobs(this.orgId(user), branchId);
+  }
+
+  @Post("print-jobs")
+  @RequirePermissions("embroidery.manage", "*")
+  createPrintJob(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
+    return this.factory.createPrintJob(this.orgId(user), createFactoryPrintJobSchema.parse(body));
+  }
+
+  @Get("packing")
+  @RequirePermissions("embroidery.read", "embroidery.manage", "*")
+  listPacking(@CurrentUser() user: AccessJwtPayload, @Query("branchId") branchId?: string) {
+    return this.factory.listPacking(this.orgId(user), branchId);
+  }
+
+  @Post("packing")
+  @RequirePermissions("embroidery.manage", "*")
+  createPacking(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
+    return this.factory.createPacking(this.orgId(user), createFactoryPackingRecordSchema.parse(body));
+  }
+
+  @Post("designs/ai-analyze")
+  @RequirePermissions("embroidery.manage", "embroidery.read", "*")
+  analyzeDesign(@CurrentUser() user: AccessJwtPayload, @Body() body: unknown) {
+    return this.factory.analyzeDesignAi(this.orgId(user), factoryDesignAiAnalyzeSchema.parse(body));
   }
 }

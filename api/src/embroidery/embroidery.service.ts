@@ -39,6 +39,9 @@ import {
   embroideryPieceRateEntries,
   embroideryProductionLogs,
   embroideryQcRecords,
+  factoryItems,
+  factoryStockBalances,
+  factoryStockLedger,
   type PlatformPgDb,
 } from "@platform/database-pg";
 import { and, desc, eq, sql } from "drizzle-orm";
@@ -76,6 +79,7 @@ export class EmbroideryService {
   async createDesign(organizationId: string, input: CreateEmbroideryDesign) {
     const data = createEmbroideryDesignSchema.parse(input);
     const fileContent = data.fileContentBase64?.replace(/\s/g, "") || null;
+    const previewContent = data.previewBase64?.replace(/\s/g, "") || null;
     const [row] = await this.db
       .insert(embroideryDesigns)
       .values({
@@ -90,6 +94,17 @@ export class EmbroideryService {
         fileContentBase64: fileContent,
         fileMimeType: data.fileMimeType ?? null,
         notes: data.notes ?? null,
+        widthMm: data.widthMm ?? 0,
+        heightMm: data.heightMm ?? 0,
+        hoop: data.hoop ?? null,
+        workType: data.workType ?? "flat",
+        threadBrand: data.threadBrand ?? null,
+        ratePer1kPkr: data.ratePer1kPkr ?? 0,
+        needleChartJson: data.needleChartJson ?? null,
+        previewBase64: previewContent,
+        previewMimeType: data.previewMimeType ?? null,
+        aiAnalysisJson: data.aiAnalysisJson ?? null,
+        detailsJson: data.detailsJson ?? null,
       })
       .returning();
     if (!row) throw new BadRequestException("Failed to create design");
@@ -183,6 +198,24 @@ export class EmbroideryService {
         status: data.status ?? "idle",
         operatorUserId: data.operatorUserId ?? null,
         notes: data.notes ?? null,
+        brand: data.brand ?? null,
+        model: data.model ?? null,
+        serialNumber: data.serialNumber ?? null,
+        needlesPerHead: data.needlesPerHead ?? 15,
+        maxRpm: data.maxRpm ?? 0,
+        hoopSizes: data.hoopSizes ?? null,
+        attachments: data.attachments ?? null,
+        powerStatus: data.powerStatus ?? "ok",
+        feedStatus: data.feedStatus ?? "ok",
+        beamBufferNotes: data.beamBufferNotes ?? null,
+        factoryOperatorId: data.factoryOperatorId ?? null,
+        currentDesignId: data.currentDesignId ?? null,
+        locationBay: data.locationBay ?? null,
+        lastServiceDate: data.lastServiceDate ?? null,
+        nextServiceDate: data.nextServiceDate ?? null,
+        runHours: data.runHours ?? 0,
+        stitchCounter: data.stitchCounter ?? 0,
+        detailsJson: data.detailsJson ?? null,
       })
       .returning();
     if (!row) throw new BadRequestException("Failed to create machine");
@@ -200,6 +233,26 @@ export class EmbroideryService {
         ...(data.status !== undefined ? { status: data.status } : {}),
         ...(data.operatorUserId !== undefined ? { operatorUserId: data.operatorUserId } : {}),
         ...(data.notes !== undefined ? { notes: data.notes } : {}),
+        ...(data.brand !== undefined ? { brand: data.brand } : {}),
+        ...(data.model !== undefined ? { model: data.model } : {}),
+        ...(data.serialNumber !== undefined ? { serialNumber: data.serialNumber } : {}),
+        ...(data.needlesPerHead !== undefined ? { needlesPerHead: data.needlesPerHead } : {}),
+        ...(data.maxRpm !== undefined ? { maxRpm: data.maxRpm } : {}),
+        ...(data.hoopSizes !== undefined ? { hoopSizes: data.hoopSizes } : {}),
+        ...(data.attachments !== undefined ? { attachments: data.attachments } : {}),
+        ...(data.powerStatus !== undefined ? { powerStatus: data.powerStatus } : {}),
+        ...(data.feedStatus !== undefined ? { feedStatus: data.feedStatus } : {}),
+        ...(data.beamBufferNotes !== undefined ? { beamBufferNotes: data.beamBufferNotes } : {}),
+        ...(data.factoryOperatorId !== undefined
+          ? { factoryOperatorId: data.factoryOperatorId }
+          : {}),
+        ...(data.currentDesignId !== undefined ? { currentDesignId: data.currentDesignId } : {}),
+        ...(data.locationBay !== undefined ? { locationBay: data.locationBay } : {}),
+        ...(data.lastServiceDate !== undefined ? { lastServiceDate: data.lastServiceDate } : {}),
+        ...(data.nextServiceDate !== undefined ? { nextServiceDate: data.nextServiceDate } : {}),
+        ...(data.runHours !== undefined ? { runHours: data.runHours } : {}),
+        ...(data.stitchCounter !== undefined ? { stitchCounter: data.stitchCounter } : {}),
+        ...(data.detailsJson !== undefined ? { detailsJson: data.detailsJson } : {}),
         updatedAt: new Date(),
       })
       .where(and(eq(embroideryMachines.id, id), eq(embroideryMachines.organizationId, organizationId)))
@@ -367,6 +420,11 @@ export class EmbroideryService {
         invoiceAmountPkr: data.invoiceAmountPkr ?? 0,
         invoiceRef: data.invoiceRef ?? null,
         notes: data.notes ?? null,
+        inwardChallanId: data.inwardChallanId ?? null,
+        factoryOperatorId: data.factoryOperatorId ?? null,
+        priority: data.priority ?? "normal",
+        needleChartJson: data.needleChartJson ?? null,
+        detailsJson: data.detailsJson ?? null,
       })
       .returning();
     if (!row) throw new BadRequestException("Failed to create job");
@@ -473,6 +531,12 @@ export class EmbroideryService {
         piecesCompleted: data.piecesCompleted ?? 0,
         hoursWorked: String(data.hoursWorked ?? 0),
         notes: data.notes ?? null,
+        stitches: data.stitches ?? 0,
+        frames: data.frames ?? 0,
+        threadBreaks: data.threadBreaks ?? 0,
+        runMinutes: data.runMinutes ?? 0,
+        stopMinutes: data.stopMinutes ?? 0,
+        factoryOperatorId: data.factoryOperatorId ?? null,
         loggedAt: data.loggedAt ? new Date(data.loggedAt) : new Date(),
       })
       .returning();
@@ -498,22 +562,76 @@ export class EmbroideryService {
     await this.assertJob(organizationId, data.jobId);
     const customerOwned = data.customerOwned ?? "no";
     const unitCostPkr = data.unitCostPkr ?? 0;
-    const [row] = await this.db
-      .insert(embroideryMaterialIssues)
-      .values({
-        organizationId,
-        branchId: data.branchId,
-        jobId: data.jobId,
-        productId: data.productId ?? null,
-        itemName: data.itemName,
-        quantity: String(data.quantity),
-        unit: data.unit ?? "pc",
-        customerOwned,
-        unitCostPkr,
-        notes: data.notes ?? null,
-      })
-      .returning();
-    if (!row) throw new BadRequestException("Failed to issue material");
+    const factoryItemId = data.factoryItemId ?? null;
+    const qtyDelta = -Number(data.quantity);
+
+    const row = await this.db.transaction(async (tx) => {
+      const [inserted] = await tx
+        .insert(embroideryMaterialIssues)
+        .values({
+          organizationId,
+          branchId: data.branchId,
+          jobId: data.jobId,
+          productId: data.productId ?? null,
+          itemName: data.itemName,
+          quantity: String(data.quantity),
+          unit: data.unit ?? "pc",
+          customerOwned,
+          unitCostPkr,
+          notes: data.notes ?? null,
+          factoryItemId,
+          lotNumber: data.lotNumber ?? null,
+          purpose: data.purpose ?? null,
+          returnable: data.returnable ?? "no",
+          issuedBy: data.issuedBy ?? null,
+        })
+        .returning();
+      if (!inserted) throw new BadRequestException("Failed to issue material");
+
+      if (factoryItemId && customerOwned !== "yes") {
+        const [item] = await tx
+          .select()
+          .from(factoryItems)
+          .where(
+            and(eq(factoryItems.id, factoryItemId), eq(factoryItems.organizationId, organizationId)),
+          )
+          .limit(1);
+        if (!item) throw new NotFoundException("Factory item not found");
+        if (item.branchId !== data.branchId) throw new BadRequestException("Item branch mismatch");
+
+        await tx.insert(factoryStockLedger).values({
+          organizationId,
+          branchId: data.branchId,
+          itemId: factoryItemId,
+          txnType: "issue",
+          qtyDelta: String(qtyDelta),
+          refType: "embroidery_material_issue",
+          refId: inserted.id,
+          notes: data.notes ?? null,
+        });
+        await tx
+          .insert(factoryStockBalances)
+          .values({
+            organizationId,
+            branchId: data.branchId,
+            itemId: factoryItemId,
+            qtyOnHand: String(qtyDelta),
+          })
+          .onConflictDoUpdate({
+            target: [
+              factoryStockBalances.organizationId,
+              factoryStockBalances.branchId,
+              factoryStockBalances.itemId,
+            ],
+            set: {
+              qtyOnHand: sql`${factoryStockBalances.qtyOnHand} + ${String(qtyDelta)}`,
+              updatedAt: new Date(),
+            },
+          });
+      }
+
+      return inserted;
+    });
 
     if (customerOwned !== "yes") {
       const addCost = Math.round(Number(data.quantity) * unitCostPkr);
@@ -543,21 +661,15 @@ export class EmbroideryService {
       .from(embroideryQcRecords)
       .where(and(...conditions))
       .orderBy(desc(embroideryQcRecords.createdAt));
-    return rows.map((r) => ({
-      id: r.id,
-      organizationId: r.organizationId,
-      branchId: r.branchId,
-      jobId: r.jobId,
-      result: r.result,
-      defectCode: r.defectCode,
-      quantity: r.quantity,
-      notes: r.notes,
-      createdAt: iso(r.createdAt)!,
-    }));
+    return rows.map((r) => this.mapQc(r));
   }
 
   async createQc(organizationId: string, input: CreateEmbroideryQcRecord) {
     const data = createEmbroideryQcRecordSchema.parse(input);
+    const detailsJson =
+      typeof input === "object" && input !== null && "detailsJson" in input
+        ? ((input as { detailsJson?: string | null }).detailsJson ?? null)
+        : null;
     await this.assertJob(organizationId, data.jobId);
     const [row] = await this.db
       .insert(embroideryQcRecords)
@@ -569,6 +681,9 @@ export class EmbroideryService {
         defectCode: data.defectCode ?? null,
         quantity: data.quantity ?? 1,
         notes: data.notes ?? null,
+        claimSide: data.claimSide ?? "operator",
+        disposition: data.disposition ?? "rework",
+        detailsJson,
       })
       .returning();
     if (!row) throw new BadRequestException("Failed to create QC record");
@@ -595,17 +710,7 @@ export class EmbroideryService {
         .limit(1);
       await this.syncLinkedOrderStatus(organizationId, job?.customerOrderId ?? null, "finishing");
     }
-    return {
-      id: row.id,
-      organizationId: row.organizationId,
-      branchId: row.branchId,
-      jobId: row.jobId,
-      result: row.result,
-      defectCode: row.defectCode,
-      quantity: row.quantity,
-      notes: row.notes,
-      createdAt: iso(row.createdAt)!,
-    };
+    return this.mapQc(row);
   }
 
   // ── Delivery ─────────────────────────────────────────────
@@ -649,6 +754,8 @@ export class EmbroideryService {
         invoiceRef,
         invoiceAmountPkr,
         notes: data.notes ?? null,
+        vehicle: data.vehicle ?? null,
+        driverName: data.driverName ?? null,
       })
       .returning();
     if (!row) throw new BadRequestException("Failed to create delivery");
@@ -832,6 +939,17 @@ export class EmbroideryService {
       hasFile: Boolean(r.fileContentBase64),
       fileMimeType: r.fileMimeType ?? null,
       notes: r.notes,
+      widthMm: r.widthMm,
+      heightMm: r.heightMm,
+      hoop: r.hoop,
+      workType: r.workType,
+      threadBrand: r.threadBrand,
+      ratePer1kPkr: r.ratePer1kPkr,
+      needleChartJson: r.needleChartJson,
+      previewBase64: r.previewBase64,
+      previewMimeType: r.previewMimeType,
+      aiAnalysisJson: r.aiAnalysisJson,
+      detailsJson: r.detailsJson,
       createdAt: iso(r.createdAt)!,
       updatedAt: iso(r.updatedAt)!,
     };
@@ -848,6 +966,24 @@ export class EmbroideryService {
       status: r.status,
       operatorUserId: r.operatorUserId,
       notes: r.notes,
+      brand: r.brand,
+      model: r.model,
+      serialNumber: r.serialNumber,
+      needlesPerHead: r.needlesPerHead,
+      maxRpm: r.maxRpm,
+      hoopSizes: r.hoopSizes,
+      attachments: r.attachments,
+      powerStatus: r.powerStatus,
+      feedStatus: r.feedStatus,
+      beamBufferNotes: r.beamBufferNotes,
+      factoryOperatorId: r.factoryOperatorId,
+      currentDesignId: r.currentDesignId,
+      locationBay: r.locationBay,
+      lastServiceDate: r.lastServiceDate,
+      nextServiceDate: r.nextServiceDate,
+      runHours: r.runHours,
+      stitchCounter: r.stitchCounter,
+      detailsJson: r.detailsJson,
       createdAt: iso(r.createdAt)!,
       updatedAt: iso(r.updatedAt)!,
     };
@@ -883,6 +1019,28 @@ export class EmbroideryService {
       customerOwned: r.customerOwned,
       unitCostPkr: r.unitCostPkr,
       notes: r.notes,
+      factoryItemId: r.factoryItemId,
+      lotNumber: r.lotNumber,
+      purpose: r.purpose,
+      returnable: r.returnable,
+      issuedBy: r.issuedBy,
+      createdAt: iso(r.createdAt)!,
+    };
+  }
+
+  private mapQc(r: typeof embroideryQcRecords.$inferSelect) {
+    return {
+      id: r.id,
+      organizationId: r.organizationId,
+      branchId: r.branchId,
+      jobId: r.jobId,
+      result: r.result,
+      defectCode: r.defectCode,
+      quantity: r.quantity,
+      notes: r.notes,
+      claimSide: r.claimSide,
+      disposition: r.disposition,
+      detailsJson: r.detailsJson,
       createdAt: iso(r.createdAt)!,
     };
   }
@@ -899,6 +1057,8 @@ export class EmbroideryService {
       invoiceRef: r.invoiceRef,
       invoiceAmountPkr: r.invoiceAmountPkr,
       notes: r.notes,
+      vehicle: r.vehicle,
+      driverName: r.driverName,
       createdAt: iso(r.createdAt)!,
     };
   }
@@ -915,6 +1075,12 @@ export class EmbroideryService {
       piecesCompleted: r.piecesCompleted,
       hoursWorked: Number(r.hoursWorked),
       notes: r.notes,
+      stitches: r.stitches,
+      frames: r.frames,
+      threadBreaks: r.threadBreaks,
+      runMinutes: r.runMinutes,
+      stopMinutes: r.stopMinutes,
+      factoryOperatorId: r.factoryOperatorId,
       loggedAt: iso(r.loggedAt)!,
     };
   }

@@ -24,7 +24,7 @@ const EMBROIDERY_SCHEMA_FILES = [
 ];
 
 /** Factory-native inventory / CN / daily / accounts DDL. */
-const FACTORY_SCHEMA_FILES = ["ensure_factory_tables.sql"];
+const FACTORY_SCHEMA_FILES = ["ensure_factory_tables.sql", "ensure_factory_depth.sql"];
 
 const STATEMENTS = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_set_password text`,

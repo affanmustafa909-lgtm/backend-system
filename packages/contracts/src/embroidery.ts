@@ -80,6 +80,17 @@ export const createEmbroideryDesignSchema = z.object({
   fileContentBase64: designFileBase64Schema,
   fileMimeType: z.string().max(120).optional().nullable(),
   notes: z.string().max(4000).optional().nullable(),
+  widthMm: z.number().int().nonnegative().default(0),
+  heightMm: z.number().int().nonnegative().default(0),
+  hoop: z.string().max(80).optional().nullable(),
+  workType: z.enum(["flat", "sequin", "cording", "mixed"]).default("flat"),
+  threadBrand: z.string().max(80).optional().nullable(),
+  ratePer1kPkr: z.number().int().nonnegative().default(0),
+  needleChartJson: z.string().max(20000).optional().nullable(),
+  previewBase64: designFileBase64Schema,
+  previewMimeType: z.string().max(120).optional().nullable(),
+  aiAnalysisJson: z.string().max(50000).optional().nullable(),
+  detailsJson: z.string().max(20000).optional().nullable(),
 });
 export type CreateEmbroideryDesign = z.infer<typeof createEmbroideryDesignSchema>;
 
@@ -119,6 +130,24 @@ export const createEmbroideryMachineSchema = z.object({
   status: embroideryMachineStatusSchema.default("idle"),
   operatorUserId: z.string().uuid().optional().nullable(),
   notes: z.string().max(4000).optional().nullable(),
+  brand: z.string().max(80).optional().nullable(),
+  model: z.string().max(80).optional().nullable(),
+  serialNumber: z.string().max(80).optional().nullable(),
+  needlesPerHead: z.number().int().positive().default(15),
+  maxRpm: z.number().int().nonnegative().default(0),
+  hoopSizes: z.string().max(200).optional().nullable(),
+  attachments: z.string().max(200).optional().nullable(),
+  powerStatus: z.enum(["ok", "fault", "off"]).default("ok"),
+  feedStatus: z.enum(["ok", "low", "jam", "off"]).default("ok"),
+  beamBufferNotes: z.string().max(1000).optional().nullable(),
+  factoryOperatorId: z.string().uuid().optional().nullable(),
+  currentDesignId: z.string().uuid().optional().nullable(),
+  locationBay: z.string().max(80).optional().nullable(),
+  lastServiceDate: z.string().max(32).optional().nullable(),
+  nextServiceDate: z.string().max(32).optional().nullable(),
+  runHours: z.number().int().nonnegative().default(0),
+  stitchCounter: z.number().int().nonnegative().default(0),
+  detailsJson: z.string().max(20000).optional().nullable(),
 });
 export type CreateEmbroideryMachine = z.infer<typeof createEmbroideryMachineSchema>;
 
@@ -232,6 +261,11 @@ export const createEmbroideryJobSchema = z.object({
   invoiceAmountPkr: z.number().int().nonnegative().default(0),
   invoiceRef: z.string().max(128).optional().nullable(),
   notes: z.string().max(4000).optional().nullable(),
+  inwardChallanId: z.string().uuid().optional().nullable(),
+  factoryOperatorId: z.string().uuid().optional().nullable(),
+  priority: z.enum(["low", "normal", "high", "rush"]).default("normal"),
+  needleChartJson: z.string().max(20000).optional().nullable(),
+  detailsJson: z.string().max(20000).optional().nullable(),
   lines: z.array(createEmbroideryJobLineSchema).min(1),
 });
 export type CreateEmbroideryJob = z.infer<typeof createEmbroideryJobSchema>;
@@ -251,6 +285,11 @@ export const updateEmbroideryJobSchema = z.object({
   invoiceAmountPkr: z.number().int().nonnegative().optional(),
   invoiceRef: z.string().max(128).optional().nullable(),
   notes: z.string().max(4000).optional().nullable(),
+  inwardChallanId: z.string().uuid().optional().nullable(),
+  factoryOperatorId: z.string().uuid().optional().nullable(),
+  priority: z.enum(["low", "normal", "high", "rush"]).optional(),
+  needleChartJson: z.string().max(20000).optional().nullable(),
+  detailsJson: z.string().max(20000).optional().nullable(),
 });
 export type UpdateEmbroideryJob = z.infer<typeof updateEmbroideryJobSchema>;
 
@@ -289,6 +328,11 @@ export const createEmbroideryMaterialIssueSchema = z.object({
   customerOwned: embroideryYesNoSchema.default("no"),
   unitCostPkr: z.number().int().nonnegative().default(0),
   notes: z.string().max(2000).optional().nullable(),
+  factoryItemId: z.string().uuid().optional().nullable(),
+  lotNumber: z.string().max(80).optional().nullable(),
+  purpose: z.string().max(200).optional().nullable(),
+  returnable: embroideryYesNoSchema.default("no"),
+  issuedBy: z.string().max(120).optional().nullable(),
 });
 export type CreateEmbroideryMaterialIssue = z.infer<typeof createEmbroideryMaterialIssueSchema>;
 
@@ -301,6 +345,8 @@ export const embroideryQcRecordSchema = z.object({
   defectCode: z.string().nullable(),
   quantity: z.number().int().positive(),
   notes: z.string().nullable(),
+  claimSide: z.string().optional(),
+  disposition: z.string().optional(),
   createdAt: z.string(),
 });
 export type EmbroideryQcRecord = z.infer<typeof embroideryQcRecordSchema>;
@@ -312,6 +358,8 @@ export const createEmbroideryQcRecordSchema = z.object({
   defectCode: z.string().max(64).optional().nullable(),
   quantity: z.number().int().positive().default(1),
   notes: z.string().max(2000).optional().nullable(),
+  claimSide: z.enum(["party", "operator", "other"]).default("operator"),
+  disposition: z.enum(["rework", "scrap", "return", "pass"]).default("rework"),
 });
 export type CreateEmbroideryQcRecord = z.infer<typeof createEmbroideryQcRecordSchema>;
 
@@ -326,6 +374,8 @@ export const embroideryDeliverySchema = z.object({
   invoiceRef: z.string().nullable(),
   invoiceAmountPkr: z.number().int().nonnegative(),
   notes: z.string().nullable(),
+  vehicle: z.string().nullable().optional(),
+  driverName: z.string().nullable().optional(),
   createdAt: z.string(),
 });
 export type EmbroideryDelivery = z.infer<typeof embroideryDeliverySchema>;
@@ -338,10 +388,11 @@ export const createEmbroideryDeliverySchema = z.object({
   deliveredAt: z.string().optional(),
   invoiceRef: z.string().max(128).optional().nullable(),
   invoiceAmountPkr: z.number().int().nonnegative().default(0),
-  /** When true (default) and amount > 0, posts a customer AR invoice + journal entry. */
   /** Legacy flag — factory books use job bills / party ledger; restaurant AR posting is disabled. */
   postInvoiceToAccounting: z.boolean().optional().default(false),
   notes: z.string().max(2000).optional().nullable(),
+  vehicle: z.string().max(120).optional().nullable(),
+  driverName: z.string().max(120).optional().nullable(),
 });
 export type CreateEmbroideryDelivery = z.infer<typeof createEmbroideryDeliverySchema>;
 
@@ -396,6 +447,12 @@ export const createEmbroideryProductionLogSchema = z.object({
   hoursWorked: z.number().nonnegative().default(0),
   notes: z.string().max(2000).optional().nullable(),
   loggedAt: z.string().optional(),
+  stitches: z.number().int().nonnegative().default(0),
+  frames: z.number().int().nonnegative().default(0),
+  threadBreaks: z.number().int().nonnegative().default(0),
+  runMinutes: z.number().int().nonnegative().default(0),
+  stopMinutes: z.number().int().nonnegative().default(0),
+  factoryOperatorId: z.string().uuid().optional().nullable(),
 });
 export type CreateEmbroideryProductionLog = z.infer<typeof createEmbroideryProductionLogSchema>;
 

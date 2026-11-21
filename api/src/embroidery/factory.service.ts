@@ -8,7 +8,11 @@ import {
   createFactoryOperatorAdvanceSchema,
   createFactoryOperatorSchema,
   createFactoryOutwardChallanSchema,
+  createFactoryPackingRecordSchema,
   createFactoryPartySchema,
+  createFactoryPrintJobSchema,
+  createFactoryPrinterProfileSchema,
+  factoryDesignAiAnalyzeSchema,
   factoryStockTxnSchema,
   type CreateFactoryDailySheet,
   type CreateFactoryInwardChallan,
@@ -18,7 +22,11 @@ import {
   type CreateFactoryOperator,
   type CreateFactoryOperatorAdvance,
   type CreateFactoryOutwardChallan,
+  type CreateFactoryPackingRecord,
   type CreateFactoryParty,
+  type CreateFactoryPrintJob,
+  type CreateFactoryPrinterProfile,
+  type FactoryDesignAiAnalyze,
   type FactoryStockTxn,
 } from "@platform/contracts";
 import {
@@ -33,7 +41,10 @@ import {
   factoryOperators,
   factoryOutwardChallanLines,
   factoryOutwardChallans,
+  factoryPackingRecords,
   factoryParties,
+  factoryPrintJobs,
+  factoryPrinterProfiles,
   factoryStockBalances,
   factoryStockLedger,
   type PlatformPgDb,
@@ -115,6 +126,21 @@ export class FactoryService {
         phone: data.phone ?? null,
         address: data.address ?? null,
         notes: data.notes ?? null,
+        gstin: data.gstin ?? null,
+        ntnCnic: data.ntnCnic ?? null,
+        whatsapp: data.whatsapp ?? null,
+        city: data.city ?? null,
+        billingAddress: data.billingAddress ?? null,
+        shippingAddress: data.shippingAddress ?? null,
+        contactPersons: data.contactPersons ?? null,
+        paymentTerms: data.paymentTerms ?? null,
+        creditLimitPkr: data.creditLimitPkr,
+        openingBalancePkr: data.openingBalancePkr,
+        rateType: data.rateType,
+        defaultStitchRatePkr: data.defaultStitchRatePkr,
+        industrySegment: data.industrySegment ?? null,
+        bankDetails: data.bankDetails ?? null,
+        detailsJson: data.detailsJson ?? null,
       })
       .returning();
     if (!row) throw new BadRequestException("Failed to create party");
@@ -159,6 +185,13 @@ export class FactoryService {
           reorderLevel: data.reorderLevel,
           unitCostPkr: data.unitCostPkr,
           notes: data.notes ?? null,
+          brand: data.brand ?? null,
+          colour: data.colour ?? null,
+          sizeLabel: data.sizeLabel ?? null,
+          location: data.location ?? null,
+          supplierPartyId: data.supplierPartyId ?? null,
+          batchLot: data.batchLot ?? null,
+          detailsJson: data.detailsJson ?? null,
         })
         .returning();
       if (!row) throw new BadRequestException("Failed to create item");
@@ -288,6 +321,9 @@ export class FactoryService {
           partyId: data.partyId,
           challanDate: data.challanDate,
           notes: data.notes ?? null,
+          partyCnNumber: data.partyCnNumber ?? null,
+          vehicle: data.vehicle ?? null,
+          receivedBy: data.receivedBy ?? null,
         })
         .returning();
       if (!head) throw new BadRequestException("Failed to create inward challan");
@@ -300,6 +336,9 @@ export class FactoryService {
             qty: l.qty,
             unit: l.unit,
             colour: l.colour ?? null,
+            fabric: l.fabric ?? null,
+            lotNumber: l.lotNumber ?? null,
+            conditionNote: l.conditionNote ?? null,
           })),
         );
       }
@@ -370,6 +409,9 @@ export class FactoryService {
           challanDate: data.challanDate,
           invoiceAmountPkr: data.invoiceAmountPkr,
           notes: data.notes ?? null,
+          vehicle: data.vehicle ?? null,
+          driverName: data.driverName ?? null,
+          ewayRef: data.ewayRef ?? null,
         })
         .returning();
       if (!head) throw new BadRequestException("Failed to create outward challan");
@@ -442,6 +484,13 @@ export class FactoryService {
         ratePer1kStitchesPkr: data.ratePer1kStitchesPkr,
         ratePerPiecePkr: data.ratePerPiecePkr,
         notes: data.notes ?? null,
+        cnic: data.cnic ?? null,
+        address: data.address ?? null,
+        joinDate: data.joinDate ?? null,
+        payType: data.payType,
+        bankDetails: data.bankDetails ?? null,
+        photoBase64: data.photoBase64 ?? null,
+        detailsJson: data.detailsJson ?? null,
       })
       .returning();
     if (!row) throw new BadRequestException("Failed to create operator");
@@ -531,6 +580,9 @@ export class FactoryService {
               bonusPkr: l.bonusPkr,
               wagePkr,
               notes: l.notes ?? null,
+              threadBreaks: l.threadBreaks,
+              runMinutes: l.runMinutes,
+              stopReason: l.stopReason ?? null,
             };
           }),
         );
@@ -601,18 +653,23 @@ export class FactoryService {
           outwardChallanId: data.outwardChallanId ?? null,
           billDate: data.billDate,
           amountPkr: data.amountPkr,
+          taxPkr: data.taxPkr,
+          defectDeductionPkr: data.defectDeductionPkr,
+          discountPkr: data.discountPkr,
           notes: data.notes ?? null,
         })
         .returning();
       if (!row) throw new BadRequestException("Failed to create job bill");
 
+      const net =
+        Math.max(0, data.amountPkr + data.taxPkr - data.defectDeductionPkr - data.discountPkr);
       await tx.insert(factoryLedgerEntries).values({
         organizationId,
         branchId: data.branchId,
         entryDate: data.billDate,
         accountKind: "party",
         partyId: data.partyId,
-        debitPkr: data.amountPkr,
+        debitPkr: net,
         creditPkr: 0,
         refType: "job_bill",
         refId: row.id,
@@ -774,6 +831,231 @@ export class FactoryService {
     };
   }
 
+  // ── Printers / print jobs / packing / AI ────────────────
+
+  async listPrinters(organizationId: string, branchId?: string) {
+    const conds = [eq(factoryPrinterProfiles.organizationId, organizationId)];
+    if (branchId) conds.push(eq(factoryPrinterProfiles.branchId, branchId));
+    const rows = await this.db
+      .select()
+      .from(factoryPrinterProfiles)
+      .where(and(...conds))
+      .orderBy(desc(factoryPrinterProfiles.createdAt));
+    return rows.map((r) => ({
+      id: r.id,
+      branchId: r.branchId,
+      name: r.name,
+      printerType: r.printerType,
+      paperWidthMm: r.paperWidthMm,
+      copies: r.copies,
+      defaultFor: r.defaultFor,
+      margins: r.margins,
+      active: r.active,
+      createdAt: iso(r.createdAt)!,
+    }));
+  }
+
+  async createPrinter(organizationId: string, input: CreateFactoryPrinterProfile) {
+    const data = createFactoryPrinterProfileSchema.parse(input);
+    const [row] = await this.db
+      .insert(factoryPrinterProfiles)
+      .values({
+        organizationId,
+        branchId: data.branchId,
+        name: data.name,
+        printerType: data.printerType,
+        paperWidthMm: data.paperWidthMm,
+        copies: data.copies,
+        defaultFor: data.defaultFor,
+        margins: data.margins ?? null,
+        detailsJson: data.detailsJson ?? null,
+      })
+      .returning();
+    if (!row) throw new BadRequestException("Failed to create printer profile");
+    return this.listPrinters(organizationId, data.branchId).then((list) =>
+      list.find((p) => p.id === row.id),
+    );
+  }
+
+  async listPrintJobs(organizationId: string, branchId?: string) {
+    const conds = [eq(factoryPrintJobs.organizationId, organizationId)];
+    if (branchId) conds.push(eq(factoryPrintJobs.branchId, branchId));
+    const rows = await this.db
+      .select()
+      .from(factoryPrintJobs)
+      .where(and(...conds))
+      .orderBy(desc(factoryPrintJobs.createdAt));
+    return rows.map((r) => ({
+      id: r.id,
+      jobNumber: r.jobNumber,
+      partyId: r.partyId,
+      designId: r.designId,
+      embroideryJobId: r.embroideryJobId,
+      printType: r.printType,
+      sizeLabel: r.sizeLabel,
+      qty: r.qty,
+      printerProfileId: r.printerProfileId,
+      status: r.status,
+      notes: r.notes,
+      createdAt: iso(r.createdAt)!,
+    }));
+  }
+
+  async createPrintJob(organizationId: string, input: CreateFactoryPrintJob) {
+    const data = createFactoryPrintJobSchema.parse(input);
+    const jobNumber =
+      data.jobNumber?.trim() ||
+      `PJ-${Date.now().toString(36).toUpperCase()}`;
+    const [row] = await this.db
+      .insert(factoryPrintJobs)
+      .values({
+        organizationId,
+        branchId: data.branchId,
+        jobNumber,
+        partyId: data.partyId ?? null,
+        designId: data.designId ?? null,
+        embroideryJobId: data.embroideryJobId ?? null,
+        printType: data.printType,
+        sizeLabel: data.sizeLabel ?? null,
+        qty: data.qty,
+        printerProfileId: data.printerProfileId ?? null,
+        status: data.status,
+        notes: data.notes ?? null,
+      })
+      .returning();
+    if (!row) throw new BadRequestException("Failed to create print job");
+    return {
+      id: row.id,
+      jobNumber: row.jobNumber,
+      printType: row.printType,
+      qty: row.qty,
+      status: row.status,
+      createdAt: iso(row.createdAt)!,
+    };
+  }
+
+  async listPacking(organizationId: string, branchId?: string) {
+    const conds = [eq(factoryPackingRecords.organizationId, organizationId)];
+    if (branchId) conds.push(eq(factoryPackingRecords.branchId, branchId));
+    const rows = await this.db
+      .select()
+      .from(factoryPackingRecords)
+      .where(and(...conds))
+      .orderBy(desc(factoryPackingRecords.createdAt));
+    return rows.map((r) => ({
+      id: r.id,
+      jobId: r.jobId,
+      cartonNumber: r.cartonNumber,
+      pieces: r.pieces,
+      weightKg: Number(r.weightKg),
+      labels: r.labels,
+      sealNumber: r.sealNumber,
+      notes: r.notes,
+      createdAt: iso(r.createdAt)!,
+    }));
+  }
+
+  async createPacking(organizationId: string, input: CreateFactoryPackingRecord) {
+    const data = createFactoryPackingRecordSchema.parse(input);
+    const [row] = await this.db
+      .insert(factoryPackingRecords)
+      .values({
+        organizationId,
+        branchId: data.branchId,
+        jobId: data.jobId,
+        cartonNumber: data.cartonNumber,
+        pieces: data.pieces,
+        weightKg: String(data.weightKg),
+        labels: data.labels ?? null,
+        sealNumber: data.sealNumber ?? null,
+        notes: data.notes ?? null,
+      })
+      .returning();
+    if (!row) throw new BadRequestException("Failed to create packing record");
+    return {
+      id: row.id,
+      cartonNumber: row.cartonNumber,
+      pieces: row.pieces,
+      weightKg: Number(row.weightKg),
+      createdAt: iso(row.createdAt)!,
+    };
+  }
+
+  async analyzeDesignAi(_organizationId: string, input: FactoryDesignAiAnalyze) {
+    const data = factoryDesignAiAnalyzeSchema.parse(input);
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+    const bytesApprox = Math.floor((data.fileContentBase64.length * 3) / 4);
+    const heuristic = {
+      stitchEstimate: Math.max(5000, Math.min(250_000, Math.round(bytesApprox / 40))),
+      colourways: ["Black", "White", "Red", "Gold"],
+      suggestedNeedles: [
+        { needle: 1, colour: "Black", threadCode: "M-1000" },
+        { needle: 2, colour: "White", threadCode: "M-1800" },
+        { needle: 3, colour: "Red", threadCode: "M-1900" },
+      ],
+      underlayNotes: "Run edge walk + zigzag underlay; density ~0.40 mm for logo fills.",
+      workType: "flat" as const,
+      widthMm: 80,
+      heightMm: 60,
+      confidence: "heuristic",
+      source: apiKey ? "openai-pending-fallback" : "local-heuristic",
+      hint: data.hint ?? null,
+    };
+
+    if (!apiKey) {
+      return { analysis: heuristic, message: "OPENAI_API_KEY not set — returned local stitch estimate." };
+    }
+
+    try {
+      const mime = data.fileMimeType || "image/png";
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "system",
+              content:
+                "You assist embroidery digitizers. Return JSON with stitchEstimate (int), colourways (string[]), suggestedNeedles ({needle,colour,threadCode}[]), underlayNotes (string), workType (flat|sequin|cording|mixed), widthMm, heightMm.",
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `Estimate embroidery digitizing for this artwork. Hint: ${data.hint ?? "logo/crest"}`,
+                },
+                {
+                  type: "image_url",
+                  image_url: { url: `data:${mime};base64,${data.fileContentBase64}` },
+                },
+              ],
+            },
+          ],
+        }),
+      });
+      if (!res.ok) {
+        return { analysis: heuristic, message: `OpenAI error ${res.status} — heuristic used.` };
+      }
+      const json = (await res.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const raw = json.choices?.[0]?.message?.content ?? "{}";
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      return {
+        analysis: { ...heuristic, ...parsed, source: "openai", confidence: "model" },
+        message: "AI analysis complete — attach DST/PES for production.",
+      };
+    } catch {
+      return { analysis: heuristic, message: "AI call failed — heuristic used." };
+    }
+  }
+
   // ── Mappers ────────────────────────────────────────────
 
   private mapParty(r: typeof factoryParties.$inferSelect) {
@@ -787,6 +1069,20 @@ export class FactoryService {
       phone: r.phone,
       address: r.address,
       notes: r.notes,
+      gstin: r.gstin,
+      ntnCnic: r.ntnCnic,
+      whatsapp: r.whatsapp,
+      city: r.city,
+      billingAddress: r.billingAddress,
+      shippingAddress: r.shippingAddress,
+      contactPersons: r.contactPersons,
+      paymentTerms: r.paymentTerms,
+      creditLimitPkr: r.creditLimitPkr,
+      openingBalancePkr: r.openingBalancePkr,
+      rateType: r.rateType,
+      defaultStitchRatePkr: r.defaultStitchRatePkr,
+      industrySegment: r.industrySegment,
+      bankDetails: r.bankDetails,
       createdAt: iso(r.createdAt)!,
       updatedAt: iso(r.updatedAt)!,
     };
@@ -805,6 +1101,12 @@ export class FactoryService {
       unitCostPkr: r.unitCostPkr,
       active: r.active,
       notes: r.notes,
+      brand: r.brand,
+      colour: r.colour,
+      sizeLabel: r.sizeLabel,
+      location: r.location,
+      supplierPartyId: r.supplierPartyId,
+      batchLot: r.batchLot,
       qtyOnHand: Number(qtyOnHand ?? 0),
       createdAt: iso(r.createdAt)!,
       updatedAt: iso(r.updatedAt)!,
@@ -826,6 +1128,9 @@ export class FactoryService {
       challanDate: r.challanDate,
       status: r.status,
       notes: r.notes,
+      partyCnNumber: r.partyCnNumber,
+      vehicle: r.vehicle,
+      receivedBy: r.receivedBy,
       lines: lines.map((l) => ({
         id: l.id,
         description: l.description,
@@ -834,6 +1139,9 @@ export class FactoryService {
         unit: l.unit,
         colour: l.colour,
         qtyDispatched: l.qtyDispatched,
+        fabric: l.fabric,
+        lotNumber: l.lotNumber,
+        conditionNote: l.conditionNote,
       })),
       createdAt: iso(r.createdAt)!,
       updatedAt: iso(r.updatedAt)!,
@@ -858,6 +1166,9 @@ export class FactoryService {
       status: r.status,
       invoiceAmountPkr: r.invoiceAmountPkr,
       notes: r.notes,
+      vehicle: r.vehicle,
+      driverName: r.driverName,
+      ewayRef: r.ewayRef,
       lines: lines.map((l) => ({
         id: l.id,
         inwardLineId: l.inwardLineId,
@@ -882,6 +1193,11 @@ export class FactoryService {
       ratePerPiecePkr: r.ratePerPiecePkr,
       active: r.active,
       notes: r.notes,
+      cnic: r.cnic,
+      address: r.address,
+      joinDate: r.joinDate,
+      payType: r.payType,
+      bankDetails: r.bankDetails,
       createdAt: iso(r.createdAt)!,
       updatedAt: iso(r.updatedAt)!,
     };
@@ -915,6 +1231,9 @@ export class FactoryService {
         downtimeMinutes: l.downtimeMinutes,
         bonusPkr: l.bonusPkr,
         wagePkr: l.wagePkr,
+        threadBreaks: l.threadBreaks,
+        runMinutes: l.runMinutes,
+        stopReason: l.stopReason,
         notes: l.notes,
       })),
       createdAt: iso(r.createdAt)!,
@@ -933,6 +1252,9 @@ export class FactoryService {
       outwardChallanId: r.outwardChallanId,
       billDate: r.billDate,
       amountPkr: r.amountPkr,
+      taxPkr: r.taxPkr,
+      defectDeductionPkr: r.defectDeductionPkr,
+      discountPkr: r.discountPkr,
       status: r.status,
       notes: r.notes,
       createdAt: iso(r.createdAt)!,
